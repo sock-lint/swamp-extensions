@@ -20,7 +20,7 @@ swamp extension pull @lint/<name>
 | Package                      | Description                                                              |
 | ---------------------------- | ------------------------------------------------------------------------ |
 | `@lint/adguard`              | AdGuard Home control-API wrapper — snapshot + reconcile DNS rewrites.    |
-| `@lint/nginx-proxy-manager`  | Nginx Proxy Manager admin-API — snapshot proxy hosts and certificates.   |
+| `@lint/nginx-proxy-manager`  | Nginx Proxy Manager admin-API — snapshot inventory + upsert/delete hosts.|
 | `@lint/portainer`            | Portainer API — snapshot endpoints, containers, stacks; drive actions.   |
 | `@lint/radarr`               | Radarr v3 inventory + IMDb-mismatch drift detection.                     |
 | `@lint/sonarr`               | Sonarr v3 inventory — series, episodes, root folders, ratings.           |

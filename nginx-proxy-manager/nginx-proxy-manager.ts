@@ -300,6 +300,20 @@ export const model: {
       lifetime: "infinite" as const,
       garbageCollection: 5,
     },
+    "upsert_result": {
+      description:
+        "Outcome of the most recent upsertProxyHost call: domain set, action (created/updated), resulting proxy host id",
+      schema: UpsertResultSchema,
+      lifetime: "infinite" as const,
+      garbageCollection: 20,
+    },
+    "delete_result": {
+      description:
+        "Outcome of the most recent deleteProxyHost call: proxyHostId, HTTP status, response body",
+      schema: DeleteProxyHostResultSchema,
+      lifetime: "infinite" as const,
+      garbageCollection: 20,
+    },
   },
   methods: {
     sync: {
@@ -417,6 +431,131 @@ export const model: {
           summary,
         );
         return { dataHandles: [invHandle, sumHandle] };
+      },
+    },
+    upsertProxyHost: {
+      description:
+        "Idempotently create or update an NPM proxy host. Matches by exact set of domainNames against /api/nginx/proxy-hosts; on match PUTs to /{id}, otherwise POSTs a new host. Records action (created vs updated) and resulting id in upsert_result.",
+      arguments: ProxyHostInputSchema,
+      execute: async (args: ExecuteArgs, context: ExecuteContext) => {
+        const { baseUrl, email, password, instanceLabel } = context.globalArgs;
+        const input = args as z.infer<typeof ProxyHostInputSchema>;
+        const performedAt = new Date().toISOString();
+
+        const token = await npmLogin(baseUrl, email, password);
+        const existingRaw = await npmRequest(
+          baseUrl,
+          token,
+          "GET",
+          "/api/nginx/proxy-hosts",
+          // deno-lint-ignore no-explicit-any
+        ) as any[];
+
+        const sameSet = (a: string[], b: string[]) => {
+          if (a.length !== b.length) return false;
+          const set = new Set(a);
+          return b.every((d) => set.has(d));
+        };
+        // deno-lint-ignore no-explicit-any
+        const match = existingRaw.find((h: any) =>
+          sameSet(h.domain_names ?? [], input.domainNames)
+        );
+
+        const body = {
+          domain_names: input.domainNames,
+          forward_scheme: input.forwardScheme,
+          forward_host: input.forwardHost,
+          forward_port: input.forwardPort,
+          certificate_id: input.certificateId,
+          ssl_forced: input.sslForced,
+          http2_support: input.http2Support,
+          hsts_enabled: input.hstsEnabled,
+          hsts_subdomains: input.hstsSubdomains,
+          block_exploits: input.blockExploits,
+          allow_websocket_upgrade: input.allowWebsocketUpgrade,
+          caching_enabled: input.cachingEnabled,
+          access_list_id: input.accessListId,
+          advanced_config: input.advancedConfig,
+          locations: [],
+          meta: { letsencrypt_agree: input.certificateId > 0 },
+        };
+
+        let proxyHostId: number;
+        let action: "created" | "updated";
+        if (match) {
+          const updated = await npmRequest(
+            baseUrl,
+            token,
+            "PUT",
+            `/api/nginx/proxy-hosts/${match.id}`,
+            body,
+            // deno-lint-ignore no-explicit-any
+          ) as any;
+          proxyHostId = updated?.id ?? match.id;
+          action = "updated";
+        } else {
+          const created = await npmRequest(
+            baseUrl,
+            token,
+            "POST",
+            "/api/nginx/proxy-hosts",
+            body,
+            // deno-lint-ignore no-explicit-any
+          ) as any;
+          proxyHostId = created?.id ?? 0;
+          action = "created";
+        }
+
+        const handle = await context.writeResource(
+          "upsert_result",
+          "upsert_result",
+          {
+            instanceLabel,
+            baseUrl,
+            domainNames: input.domainNames,
+            action,
+            proxyHostId,
+            performedAt,
+          },
+        );
+        return { dataHandles: [handle] };
+      },
+    },
+    deleteProxyHost: {
+      description:
+        "Delete an NPM proxy host by id via DELETE /api/nginx/proxy-hosts/{id}. Non-throwing on HTTP error — outcome lands in delete_result. Look up the id from inventory.proxyHosts first.",
+      arguments: z.object({
+        id: z.number().describe(
+          "NPM proxy host id (numeric id from /api/nginx/proxy-hosts; surfaced as `inventory.proxyHosts[].id`)",
+        ),
+      }),
+      execute: async (args: ExecuteArgs, context: ExecuteContext) => {
+        const { baseUrl, email, password, instanceLabel } = context.globalArgs;
+        const { id } = args as { id: number };
+        const deletedAt = new Date().toISOString();
+
+        const token = await npmLogin(baseUrl, email, password);
+        const result = await npmCall(
+          baseUrl,
+          token,
+          "DELETE",
+          `/api/nginx/proxy-hosts/${id}`,
+        );
+
+        const handle = await context.writeResource(
+          "delete_result",
+          "delete_result",
+          {
+            instanceLabel,
+            baseUrl,
+            proxyHostId: id,
+            ok: result.ok,
+            httpStatus: result.status,
+            body: result.body.slice(0, 400),
+            deletedAt,
+          },
+        );
+        return { dataHandles: [handle] };
       },
     },
   },
