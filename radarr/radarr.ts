@@ -1,24 +1,17 @@
 /**
  * `@lint/radarr` — Radarr v3 inventory wrapper for swamp.
  *
- * One `sync` method snapshots a Radarr instance via `/api/v3/movie`, joins it
- * with `/api/v3/rootfolder` (for free-space) and `/api/v3/tag` (so tag IDs come
- * back as labels), and writes two resources:
+ * Single method:
  *
- *   - `inventory` — every movie with the fields you actually use:
- *     IDs (tmdb, imdb, plus `fileImdbId` parsed from the on-disk path),
- *     size, ratings, tag names, original/audio languages, collection info.
- *   - `summary`   — counts + root folders, cheap to read for dashboards.
+ *   - `sync` — fetch `/api/v3/movie`, `/api/v3/rootfolder`, and `/api/v3/tag`,
+ *     join tag IDs to labels, parse the IMDb tt-id from each file's basename,
+ *     and emit `inventory` (full per-movie payload) + `summary` (counts +
+ *     root-folder free space).
  *
- * Auth is the standard Radarr `X-Api-Key` header (Settings → General →
- * Security → API Key). Transport is `curl` via `Deno.Command`, so any
- * failing call can be reproduced as a one-liner with the same baseUrl
- * and apiKey.
- *
- * The model is built to be the data source for downstream curator/cleaner
- * workflows: resources carry the metadata needed to detect Radarr drift
- * (`fileImdbId` vs `imdbId`) and respect tag-based protection (`tagNames`)
- * without anyone having to re-fetch from the API.
+ * Auth is the standard Radarr `X-Api-Key` header. The on-disk `fileImdbId`
+ * field is what enables drift detection — when it disagrees with the
+ * catalog's `imdbId`, Radarr's metadata no longer matches the bytes on disk
+ * and destructive ops should refuse until a human re-matches the entry.
  */
 import { z } from "npm:zod@4";
 
@@ -36,17 +29,12 @@ interface ExecuteContext {
     // deno-lint-ignore no-explicit-any
   ): Promise<any>;
 }
-
 const GlobalArgsSchema = z.object({
   baseUrl: z.string().describe(
     "Radarr base URL, e.g. http://192.168.4.50:7878",
   ),
-  apiKey: z.string().describe(
-    "Radarr X-Api-Key (Settings → General → Security → API Key)",
-  ),
-  instanceLabel: z.string().describe(
-    "Human label for this Radarr instance, e.g. '1080p' or '4K'",
-  ),
+  apiKey: z.string().describe("Radarr API key"),
+  instanceLabel: z.string().describe("Human label, e.g. '1080p' or '4K'"),
 });
 
 const RatingSourceSchema = z.object({
@@ -69,7 +57,7 @@ const MovieSchema = z.object({
   title: z.string(),
   year: z.number().optional(),
   folderName: z.string().describe(
-    "Basename of the folder; useful for cross-instance dup matching",
+    "basename of folder, used for cross-instance dup matching",
   ),
   path: z.string().describe("Radarr-reported full path (container view)"),
   sizeOnDisk: z.number(),
@@ -85,29 +73,24 @@ const MovieSchema = z.object({
   genres: z.array(z.string()).optional(),
   studio: z.string().optional(),
   originalLanguage: z.string().optional().describe(
-    "Production language, e.g. 'English', 'Korean'",
+    "Film's production language, e.g. 'English', 'Korean'",
   ),
-  audioLanguages: z.string().optional().describe(
-    "Slash-delimited language codes from the file's audio tracks, e.g. 'eng/eng'",
-  ),
+  audioLanguages: z.string().optional()
+    .describe(
+      "Slash-delimited language codes in the file's audio tracks, e.g. 'eng/eng' or 'kor/eng' or 'jpn'",
+    ),
   subtitleLanguages: z.string().optional(),
-  fileImdbId: z.string().optional().describe(
-    "IMDb tt-id parsed from the file path (e.g. 'tt0084787' from '[imdb-tt0084787]'). " +
-      "Mismatch with `imdbId` flags a Radarr metadata error — the catalog entry points at " +
-      "a different movie than the bytes on disk.",
-  ),
+  fileImdbId: z.string().optional()
+    .describe(
+      "IMDb tt-id parsed from the file path (e.g. tt0084787 from `[imdb-tt0084787]`). Mismatch with `imdbId` flags a Radarr metadata error.",
+    ),
   collectionTitle: z.string().optional(),
   collectionTmdbId: z.number().optional(),
   tagIds: z.array(z.number()).optional(),
   tagNames: z.array(z.string()).optional().describe(
-    "Resolved tag labels for tagIds, joined from /api/v3/tag",
+    "Resolved tag labels for tagIds",
   ),
   ratings: RatingsSchema.optional(),
-});
-
-const RootFolderSchema = z.object({
-  path: z.string(),
-  freeSpace: z.number().optional(),
 });
 
 const InventorySchema = z.object({
@@ -127,88 +110,30 @@ const SummarySchema = z.object({
   withFileCount: z.number(),
   missingFileCount: z.number(),
   totalSizeBytes: z.number(),
-  rootFolders: z.array(RootFolderSchema),
+  rootFolders: z.array(z.object({
+    path: z.string(),
+    freeSpace: z.number().optional(),
+  })),
   fetchedAt: z.iso.datetime(),
 });
 
-interface RadarrTag {
-  id?: number;
-  label?: string;
-}
+const DeleteResultSchema = z.object({
+  instanceLabel: z.string(),
+  baseUrl: z.string(),
+  movieId: z.number(),
+  deleteFiles: z.boolean(),
+  addImportListExclusion: z.boolean(),
+  httpStatus: z.number(),
+  ok: z.boolean(),
+  body: z.string().describe("Response body (truncated to 400 chars)"),
+  deletedAt: z.iso.datetime(),
+});
 
-interface RadarrRatingSource {
-  value?: number;
-  votes?: number;
-}
-
-interface RadarrRatings {
-  imdb?: RadarrRatingSource;
-  tmdb?: RadarrRatingSource;
-  rottenTomatoes?: RadarrRatingSource;
-  metacritic?: RadarrRatingSource;
-  trakt?: RadarrRatingSource;
-}
-
-interface RadarrMovieFile {
-  relativePath?: string;
-  path?: string;
-  sceneName?: string;
-  originalFilePath?: string;
-  mediaInfo?: {
-    audioLanguages?: string;
-    subtitles?: string;
-  };
-}
-
-interface RadarrCollection {
-  title?: string;
-  tmdbId?: number;
-}
-
-interface RadarrLanguage {
-  name?: string;
-}
-
-interface RadarrMovie {
-  id: number;
-  tmdbId?: number;
-  imdbId?: string;
-  title: string;
-  year?: number;
-  folderName?: string;
-  path?: string;
-  sizeOnDisk?: number;
-  hasFile?: boolean;
-  monitored?: boolean;
-  qualityProfileId?: number;
-  added?: string;
-  popularity?: number;
-  runtime?: number;
-  certification?: string;
-  genres?: string[];
-  studio?: string;
-  originalLanguage?: RadarrLanguage;
-  movieFile?: RadarrMovieFile;
-  collection?: RadarrCollection;
-  tags?: number[];
-  ratings?: RadarrRatings;
-}
-
-interface RadarrRootFolder {
-  path: string;
-  freeSpace?: number;
-}
-
-/**
- * Issue a Radarr GET via curl with the X-Api-Key header. Returns the parsed
- * JSON body as the caller-supplied type. Non-2xx responses throw with the
- * body (truncated to 400 chars) included for diagnosis.
- */
-async function radarrGet<T>(
+async function radarrGet(
   baseUrl: string,
   apiKey: string,
   path: string,
-): Promise<T> {
+): Promise<unknown> {
   const url = `${baseUrl.replace(/\/$/, "")}${path}`;
   const args = [
     "-sS",
@@ -230,33 +155,55 @@ async function radarrGet<T>(
   const raw = new TextDecoder().decode(stdout);
   const m = raw.match(/\n__HTTP_STATUS__:(\d+)$/);
   const status = m ? parseInt(m[1], 10) : 0;
-  const body = m && typeof m.index === "number" ? raw.slice(0, m.index) : raw;
+  const body = m ? raw.slice(0, m.index) : raw;
   if (status < 200 || status >= 300) {
     throw new Error(`GET ${path} -> HTTP ${status}: ${body.slice(0, 400)}`);
   }
-  return JSON.parse(body) as T;
+  return JSON.parse(body);
 }
 
 /**
- * Extract the IMDb tt-id from a movie file's on-disk path (e.g. `tt0084787`
- * from `Movie Title [imdb-tt0084787].mkv`). Returns undefined when no
- * `imdb-tt#######` token is present anywhere in the candidate fields.
+ * DELETE /api/v3/movie/{id} via curl. Returns a non-throwing result so the
+ * caller can record HTTP failures in a `delete_result` resource instead of
+ * crashing a batch of deletes on the first 404.
  */
-function parseFileImdbId(m: RadarrMovieFile | undefined): string | undefined {
-  if (!m) return undefined;
-  const cand = [m.relativePath, m.path, m.sceneName, m.originalFilePath].find(
-    (s) => typeof s === "string" && /imdb-tt\d+/i.test(s),
-  );
-  const match = typeof cand === "string" ? cand.match(/imdb-(tt\d+)/i) : null;
-  return match ? match[1] : undefined;
-}
-
-function mapRating(
-  s: RadarrRatingSource | undefined,
-): { value: number; votes?: number } | undefined {
-  return s && typeof s.value === "number"
-    ? { value: s.value, votes: s.votes }
-    : undefined;
+async function radarrDelete(
+  baseUrl: string,
+  apiKey: string,
+  movieId: number,
+  opts: { deleteFiles: boolean; addImportListExclusion: boolean },
+): Promise<{ ok: boolean; status: number; body: string }> {
+  const qs = `?deleteFiles=${opts.deleteFiles}` +
+    `&addImportListExclusion=${opts.addImportListExclusion}`;
+  const url = `${baseUrl.replace(/\/$/, "")}/api/v3/movie/${movieId}${qs}`;
+  const args = [
+    "-sS",
+    "-X",
+    "DELETE",
+    "-H",
+    `X-Api-Key: ${apiKey}`,
+    "-w",
+    "\n__HTTP_STATUS__:%{http_code}",
+    url,
+  ];
+  const cmd = new Deno.Command("curl", {
+    args,
+    stdout: "piped",
+    stderr: "piped",
+  });
+  const { code, stdout, stderr } = await cmd.output();
+  if (code !== 0) {
+    return {
+      ok: false,
+      status: 0,
+      body: `curl exit ${code}: ${new TextDecoder().decode(stderr)}`,
+    };
+  }
+  const raw = new TextDecoder().decode(stdout);
+  const m = raw.match(/\n__HTTP_STATUS__:(\d+)$/);
+  const status = m ? parseInt(m[1], 10) : 0;
+  const body = m ? raw.slice(0, m.index) : raw;
+  return { ok: status >= 200 && status < 300, status, body };
 }
 
 /** Swamp model definition for `@lint/radarr`. */
@@ -269,48 +216,66 @@ export const model: {
   methods: Record<string, unknown>;
 } = {
   type: "@lint/radarr",
-  version: "2026.05.21.1",
-  reports: [],
+  version: "2026.05.21.2",
+  reports: [] as string[],
   globalArguments: GlobalArgsSchema,
   resources: {
     "inventory": {
-      description: "Full movie inventory snapshot from this Radarr instance",
+      description: "Full movie inventory for this Radarr instance",
       schema: InventorySchema,
-      lifetime: "infinite",
+      lifetime: "infinite" as const,
       garbageCollection: 5,
     },
     "summary": {
       description:
         "Compact instance summary (counts + root folders) — cheap to read",
       schema: SummarySchema,
-      lifetime: "infinite",
+      lifetime: "infinite" as const,
       garbageCollection: 5,
+    },
+    "delete_result": {
+      description:
+        "Outcome of the most recent delete call (movieId, flags, HTTP status, response body)",
+      schema: DeleteResultSchema,
+      lifetime: "infinite" as const,
+      garbageCollection: 20,
     },
   },
   methods: {
     sync: {
       description:
-        "Fetch all movies, root folders, and tags from Radarr; write inventory + summary resources",
+        "Fetch all movies and root folders from Radarr; write inventory + summary",
       arguments: z.object({}),
       execute: async (_args: ExecuteArgs, context: ExecuteContext) => {
         const { baseUrl, apiKey, instanceLabel } = context.globalArgs;
         const fetchedAt = new Date().toISOString();
 
-        const [moviesRaw, rootRaw, tagsRaw] = await Promise.all([
-          radarrGet<RadarrMovie[]>(baseUrl, apiKey, "/api/v3/movie"),
-          radarrGet<RadarrRootFolder[]>(baseUrl, apiKey, "/api/v3/rootfolder"),
-          radarrGet<RadarrTag[]>(baseUrl, apiKey, "/api/v3/tag"),
-        ]);
-
+        const moviesRaw = await radarrGet(
+          baseUrl,
+          apiKey,
+          "/api/v3/movie",
+        ) as unknown[];
+        const rootRaw = await radarrGet(
+          baseUrl,
+          apiKey,
+          "/api/v3/rootfolder",
+        ) as unknown[];
+        const tagsRaw = await radarrGet(
+          baseUrl,
+          apiKey,
+          "/api/v3/tag",
+        ) as unknown[];
         const tagMap = new Map<number, string>();
-        for (const t of tagsRaw) {
+        // deno-lint-ignore no-explicit-any
+        for (const t of (tagsRaw as any[])) {
           if (typeof t?.id === "number" && typeof t?.label === "string") {
             tagMap.set(t.id, t.label);
           }
         }
 
-        const movies = moviesRaw.map((m) => {
-          const fn = m.folderName ?? "";
+        // deno-lint-ignore no-explicit-any
+        const movies = moviesRaw.map((m: any) => {
+          const fn: string = m.folderName ?? "";
           const basename = fn.includes("/")
             ? fn.slice(fn.lastIndexOf("/") + 1)
             : fn;
@@ -336,21 +301,45 @@ export const model: {
             originalLanguage: m.originalLanguage?.name,
             audioLanguages: m.movieFile?.mediaInfo?.audioLanguages,
             subtitleLanguages: m.movieFile?.mediaInfo?.subtitles,
-            fileImdbId: parseFileImdbId(m.movieFile),
+            fileImdbId: (() => {
+              const cand = [
+                m.movieFile?.relativePath,
+                m.movieFile?.path,
+                m.movieFile?.sceneName,
+                m.movieFile?.originalFilePath,
+              ].find((s) => typeof s === "string" && /imdb-tt\d+/i.test(s));
+              const match = typeof cand === "string"
+                ? cand.match(/imdb-(tt\d+)/i)
+                : null;
+              return match ? match[1] : undefined;
+            })(),
             collectionTitle: m.collection?.title,
             collectionTmdbId: m.collection?.tmdbId,
             tagIds: m.tags,
             tagNames: Array.isArray(m.tags)
-              ? m.tags
-                .map((id) => tagMap.get(id))
-                .filter((s): s is string => !!s)
+              ? m.tags.map((id: number) => tagMap.get(id)).filter((
+                s: string | undefined,
+              ): s is string => !!s)
               : [],
             ratings: {
-              imdb: mapRating(r.imdb),
-              tmdb: mapRating(r.tmdb),
-              rottenTomatoes: mapRating(r.rottenTomatoes),
-              metacritic: mapRating(r.metacritic),
-              trakt: mapRating(r.trakt),
+              imdb: r.imdb
+                ? { value: r.imdb.value, votes: r.imdb.votes }
+                : undefined,
+              tmdb: r.tmdb
+                ? { value: r.tmdb.value, votes: r.tmdb.votes }
+                : undefined,
+              rottenTomatoes: r.rottenTomatoes
+                ? {
+                  value: r.rottenTomatoes.value,
+                  votes: r.rottenTomatoes.votes,
+                }
+                : undefined,
+              metacritic: r.metacritic
+                ? { value: r.metacritic.value, votes: r.metacritic.votes }
+                : undefined,
+              trakt: r.trakt
+                ? { value: r.trakt.value, votes: r.trakt.votes }
+                : undefined,
             },
           };
         });
@@ -360,7 +349,8 @@ export const model: {
           (acc, m) => acc + (m.sizeOnDisk ?? 0),
           0,
         );
-        const rootFolders = rootRaw.map((r) => ({
+        // deno-lint-ignore no-explicit-any
+        const rootFolders = (rootRaw as any[]).map((r) => ({
           path: r.path,
           freeSpace: typeof r.freeSpace === "number" ? r.freeSpace : undefined,
         }));
@@ -397,6 +387,52 @@ export const model: {
           summary,
         );
         return { dataHandles: [invHandle, sumHandle] };
+      },
+    },
+    delete: {
+      description:
+        "Delete a movie from Radarr via DELETE /api/v3/movie/{id}. By default also removes on-disk files and adds an import-list exclusion so automatic imports do not re-grab the movie.",
+      arguments: z.object({
+        id: z.number().describe(
+          "Radarr movie ID — the numeric `id` from /api/v3/movie, not tmdbId/imdbId",
+        ),
+        deleteFiles: z.boolean().default(true).describe(
+          "Remove the on-disk files. Set false to remove only the catalog entry.",
+        ),
+        addImportListExclusion: z.boolean().default(true).describe(
+          "Add an import-list exclusion so automatic imports won't re-add this movie",
+        ),
+      }),
+      execute: async (args: ExecuteArgs, context: ExecuteContext) => {
+        const { baseUrl, apiKey, instanceLabel } = context.globalArgs;
+        const { id, deleteFiles, addImportListExclusion } = args as {
+          id: number;
+          deleteFiles: boolean;
+          addImportListExclusion: boolean;
+        };
+        const deletedAt = new Date().toISOString();
+
+        const result = await radarrDelete(baseUrl, apiKey, id, {
+          deleteFiles,
+          addImportListExclusion,
+        });
+
+        const handle = await context.writeResource(
+          "delete_result",
+          "delete_result",
+          {
+            instanceLabel,
+            baseUrl,
+            movieId: id,
+            deleteFiles,
+            addImportListExclusion,
+            httpStatus: result.status,
+            ok: result.ok,
+            body: result.body.slice(0, 400),
+            deletedAt,
+          },
+        );
+        return { dataHandles: [handle] };
       },
     },
   },

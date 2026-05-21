@@ -1,7 +1,7 @@
 manifestVersion: 1
 name: "@lint/radarr"
-version: "2026.05.21.1"
-description: "Radarr v3 inventory wrapper — snapshot movies, root folders, and tags into structured swamp resources; parses on-disk IMDb IDs so Radarr metadata drift is detectable."
+version: "2026.05.21.2"
+description: "Radarr v3 wrapper — snapshot movies/root folders/tags (with on-disk IMDb parsing for drift detection), and delete movies via the official API (files + import-list exclusion)."
 repository: "https://github.com/sock-lint/swamp-extensions"
 paths:
   base: manifest

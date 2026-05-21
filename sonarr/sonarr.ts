@@ -101,6 +101,18 @@ const SummarySchema = z.object({
   fetchedAt: z.iso.datetime(),
 });
 
+const DeleteResultSchema = z.object({
+  instanceLabel: z.string(),
+  baseUrl: z.string(),
+  seriesId: z.number(),
+  deleteFiles: z.boolean(),
+  addImportListExclusion: z.boolean(),
+  httpStatus: z.number(),
+  ok: z.boolean(),
+  body: z.string().describe("Response body (truncated to 400 chars)"),
+  deletedAt: z.iso.datetime(),
+});
+
 async function sonarrGet(
   baseUrl: string,
   apiKey: string,
@@ -134,6 +146,50 @@ async function sonarrGet(
   return JSON.parse(body);
 }
 
+/**
+ * DELETE /api/v3/series/{id} via curl. Returns a non-throwing result so the
+ * caller can record HTTP failures in a `delete_result` resource instead of
+ * crashing a batch of deletes on the first 404.
+ */
+async function sonarrDelete(
+  baseUrl: string,
+  apiKey: string,
+  seriesId: number,
+  opts: { deleteFiles: boolean; addImportListExclusion: boolean },
+): Promise<{ ok: boolean; status: number; body: string }> {
+  const qs = `?deleteFiles=${opts.deleteFiles}` +
+    `&addImportListExclusion=${opts.addImportListExclusion}`;
+  const url = `${baseUrl.replace(/\/$/, "")}/api/v3/series/${seriesId}${qs}`;
+  const args = [
+    "-sS",
+    "-X",
+    "DELETE",
+    "-H",
+    `X-Api-Key: ${apiKey}`,
+    "-w",
+    "\n__HTTP_STATUS__:%{http_code}",
+    url,
+  ];
+  const cmd = new Deno.Command("curl", {
+    args,
+    stdout: "piped",
+    stderr: "piped",
+  });
+  const { code, stdout, stderr } = await cmd.output();
+  if (code !== 0) {
+    return {
+      ok: false,
+      status: 0,
+      body: `curl exit ${code}: ${new TextDecoder().decode(stderr)}`,
+    };
+  }
+  const raw = new TextDecoder().decode(stdout);
+  const m = raw.match(/\n__HTTP_STATUS__:(\d+)$/);
+  const status = m ? parseInt(m[1], 10) : 0;
+  const body = m ? raw.slice(0, m.index) : raw;
+  return { ok: status >= 200 && status < 300, status, body };
+}
+
 /** Swamp model definition for `@lint/sonarr`. */
 export const model: {
   type: string;
@@ -144,7 +200,7 @@ export const model: {
   methods: Record<string, unknown>;
 } = {
   type: "@lint/sonarr",
-  version: "2026.05.21.1",
+  version: "2026.05.21.2",
   reports: [] as string[],
   globalArguments: GlobalArgsSchema,
   resources: {
@@ -159,6 +215,13 @@ export const model: {
       schema: SummarySchema,
       lifetime: "infinite" as const,
       garbageCollection: 5,
+    },
+    "delete_result": {
+      description:
+        "Outcome of the most recent delete call (seriesId, flags, HTTP status, response body)",
+      schema: DeleteResultSchema,
+      lifetime: "infinite" as const,
+      garbageCollection: 20,
     },
   },
   methods: {
@@ -283,6 +346,52 @@ export const model: {
           summary,
         );
         return { dataHandles: [invHandle, sumHandle] };
+      },
+    },
+    delete: {
+      description:
+        "Delete a series from Sonarr via DELETE /api/v3/series/{id}. By default also removes on-disk files and adds an import-list exclusion so automatic imports do not re-add the series.",
+      arguments: z.object({
+        id: z.number().describe(
+          "Sonarr series ID — the numeric `id` from /api/v3/series, not tvdbId/imdbId/tmdbId",
+        ),
+        deleteFiles: z.boolean().default(true).describe(
+          "Remove the on-disk files. Set false to remove only the catalog entry.",
+        ),
+        addImportListExclusion: z.boolean().default(true).describe(
+          "Add an import-list exclusion so automatic imports won't re-add this series",
+        ),
+      }),
+      execute: async (args: ExecuteArgs, context: ExecuteContext) => {
+        const { baseUrl, apiKey, instanceLabel } = context.globalArgs;
+        const { id, deleteFiles, addImportListExclusion } = args as {
+          id: number;
+          deleteFiles: boolean;
+          addImportListExclusion: boolean;
+        };
+        const deletedAt = new Date().toISOString();
+
+        const result = await sonarrDelete(baseUrl, apiKey, id, {
+          deleteFiles,
+          addImportListExclusion,
+        });
+
+        const handle = await context.writeResource(
+          "delete_result",
+          "delete_result",
+          {
+            instanceLabel,
+            baseUrl,
+            seriesId: id,
+            deleteFiles,
+            addImportListExclusion,
+            httpStatus: result.status,
+            ok: result.ok,
+            body: result.body.slice(0, 400),
+            deletedAt,
+          },
+        );
+        return { dataHandles: [handle] };
       },
     },
   },

@@ -21,9 +21,9 @@ swamp extension pull @lint/<name>
 | `@lint/nginx-proxy-manager`  | Nginx Proxy Manager API wrapper — snapshot proxy hosts, redirection hosts, and certificates                                        |
 | `@lint/plex`                 | Plex Media Server control-API wrapper — trigger library refreshes on demand                                                        |
 | `@lint/portainer`            | Portainer API wrapper — snapshot endpoints, containers, and stacks across every docker host Portainer manages                      |
-| `@lint/radarr`               | Radarr v3 inventory wrapper — snapshot movies, root folders, and tags; parses on-disk IMDb IDs so Radarr metadata drift is visible |
+| `@lint/radarr`               | Radarr v3 wrapper — snapshot inventory (with on-disk IMDb parsing for drift detection) and delete movies via the standard *arr API |
 | `@lint/seerr`                | Overseerr / Jellyseerr request inventory — paginated requests with status, requester, target id; feeds the media curator                |
-| `@lint/sonarr`               | Sonarr v3 inventory wrapper — snapshot series, root folders, and tags; flattens statistics so ended-but-incomplete queries are trivial |
+| `@lint/sonarr`               | Sonarr v3 wrapper — snapshot inventory (statistics flattened for ended-but-incomplete queries) and delete series via the standard *arr API |
 | `@lint/tautulli`             | Tautulli watch-history wrapper — snapshot per-movie and per-series play counts and last-played timestamps; the never-watched signal for curation |
 
 More to come — see [swamp-club.com/lint](https://swamp-club.com/lint).
