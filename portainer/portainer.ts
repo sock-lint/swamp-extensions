@@ -1,13 +1,20 @@
 /**
  * `@lint/portainer` — Portainer REST-API wrapper for swamp.
  *
- * Single method:
+ * Three methods:
  *
  *   - `sync` — fetch `/api/endpoints`, then for every online endpoint pull
  *     `/api/endpoints/{id}/docker/containers/json?all=true` and `/api/stacks`.
  *     Emits a full `inventory` (every container's image/state/labels/ports
  *     across every endpoint Portainer can see) and a compact `summary`
  *     (per-endpoint container counts + total stack count).
+ *   - `containerAction` — start / stop / restart / kill / pause / unpause a
+ *     docker container on any Portainer-managed endpoint. Emits an
+ *     `action_result` resource carrying HTTP status + response body, and is
+ *     non-throwing on HTTP failure so batched calls survive a single 404.
+ *   - `pullImage` — pull a docker image on a Portainer endpoint
+ *     (`POST /api/endpoints/{id}/docker/images/create?fromImage=…`). Also
+ *     records its outcome in `action_result`.
  *
  * Auth is a Portainer API key sent via the `X-API-Key` header. Endpoints with
  * `status != 1` (offline / agent unreachable) are still listed in `summary`
@@ -109,6 +116,22 @@ const SummarySchema = z.object({
   fetchedAt: z.iso.datetime(),
 });
 
+const ActionResultSchema = z.object({
+  instanceLabel: z.string(),
+  baseUrl: z.string(),
+  endpointId: z.number(),
+  action: z.string().describe(
+    "Action invoked: start/stop/restart/kill/pause/unpause/pullImage",
+  ),
+  target: z.string().describe(
+    "Container id (for containerAction) or image reference (for pullImage)",
+  ),
+  httpStatus: z.number(),
+  ok: z.boolean(),
+  body: z.string().describe("Response body (truncated to 400 chars)"),
+  performedAt: z.iso.datetime(),
+});
+
 async function portainerRequest(
   baseUrl: string,
   apiKey: string,
@@ -163,6 +186,60 @@ async function portainerRequest(
   }
 }
 
+/**
+ * Non-throwing twin of `portainerRequest`. Returns `{ ok, status, body }` so
+ * action methods can record outcomes in a resource instead of crashing a
+ * batch of calls on a single failure (e.g. a 404 for an already-removed
+ * container).
+ */
+async function portainerCall(
+  baseUrl: string,
+  apiKey: string,
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<{ ok: boolean; status: number; body: string }> {
+  const url = `${baseUrl.replace(/\/$/, "")}${path}`;
+  const args = [
+    "-sS",
+    "-X",
+    method,
+    "-H",
+    `X-API-Key: ${apiKey}`,
+    "-H",
+    "Accept: application/json",
+    "-w",
+    "\n__HTTP_STATUS__:%{http_code}",
+  ];
+  if (body !== undefined) {
+    args.push(
+      "-H",
+      "Content-Type: application/json",
+      "-d",
+      JSON.stringify(body),
+    );
+  }
+  args.push(url);
+  const cmd = new Deno.Command("curl", {
+    args,
+    stdout: "piped",
+    stderr: "piped",
+  });
+  const { code, stdout, stderr } = await cmd.output();
+  if (code !== 0) {
+    return {
+      ok: false,
+      status: 0,
+      body: `curl exit ${code}: ${new TextDecoder().decode(stderr)}`,
+    };
+  }
+  const raw = new TextDecoder().decode(stdout);
+  const m = raw.match(/\n__HTTP_STATUS__:(\d+)$/);
+  const status = m ? parseInt(m[1], 10) : 0;
+  const text = m ? raw.slice(0, m.index) : raw;
+  return { ok: status >= 200 && status < 300, status, body: text };
+}
+
 /** Swamp model definition for `@lint/portainer`. */
 export const model: {
   type: string;
@@ -173,7 +250,7 @@ export const model: {
   methods: Record<string, unknown>;
 } = {
   type: "@lint/portainer",
-  version: "2026.05.21.1",
+  version: "2026.05.21.2",
   reports: [] as string[],
   globalArguments: GlobalArgsSchema,
   resources: {
@@ -189,6 +266,13 @@ export const model: {
       schema: SummarySchema,
       lifetime: "infinite" as const,
       garbageCollection: 5,
+    },
+    "action_result": {
+      description:
+        "Outcome of the most recent containerAction / pullImage call: endpointId, action, target, HTTP status, response body",
+      schema: ActionResultSchema,
+      lifetime: "infinite" as const,
+      garbageCollection: 20,
     },
   },
   methods: {
@@ -345,6 +429,109 @@ export const model: {
           summary,
         );
         return { dataHandles: [invHandle, sumHandle] };
+      },
+    },
+    containerAction: {
+      description:
+        "Perform a docker action on a container via Portainer (start/stop/restart/kill/pause/unpause). Non-throwing on HTTP error — outcome lands in the action_result resource so batched calls survive single failures.",
+      arguments: z.object({
+        endpointId: z.number().describe(
+          "Portainer endpoint id (the numeric `id` from /api/endpoints — also surfaced in the `inventory.endpoints` resource)",
+        ),
+        containerId: z.string().describe(
+          "Docker container id (full or short hex). Available on every container in the `inventory.containers` resource.",
+        ),
+        action: z.enum([
+          "start",
+          "stop",
+          "restart",
+          "kill",
+          "pause",
+          "unpause",
+        ]).describe(
+          "Container action to invoke; maps 1:1 to POST /containers/{id}/{action}",
+        ),
+      }),
+      execute: async (args: ExecuteArgs, context: ExecuteContext) => {
+        const { baseUrl, apiKey, instanceLabel } = context.globalArgs;
+        const { endpointId, containerId, action } = args as {
+          endpointId: number;
+          containerId: string;
+          action: string;
+        };
+        const performedAt = new Date().toISOString();
+
+        const result = await portainerCall(
+          baseUrl,
+          apiKey,
+          "POST",
+          `/api/endpoints/${endpointId}/docker/containers/${
+            encodeURIComponent(containerId)
+          }/${action}`,
+        );
+
+        const handle = await context.writeResource(
+          "action_result",
+          "action_result",
+          {
+            instanceLabel,
+            baseUrl,
+            endpointId,
+            action,
+            target: containerId,
+            httpStatus: result.status,
+            ok: result.ok,
+            body: result.body.slice(0, 400),
+            performedAt,
+          },
+        );
+        return { dataHandles: [handle] };
+      },
+    },
+    pullImage: {
+      description:
+        "Pull a docker image on a Portainer endpoint via POST /api/endpoints/{id}/docker/images/create?fromImage=<image>. Portainer streams the docker response; the final body lands in action_result for diagnostics.",
+      arguments: z.object({
+        endpointId: z.number().describe(
+          "Portainer endpoint id (the numeric `id` from /api/endpoints)",
+        ),
+        image: z.string().describe(
+          "Image reference, e.g. 'ghcr.io/user/foo:latest' or 'nginx:1.27'",
+        ),
+      }),
+      execute: async (args: ExecuteArgs, context: ExecuteContext) => {
+        const { baseUrl, apiKey, instanceLabel } = context.globalArgs;
+        const { endpointId, image } = args as {
+          endpointId: number;
+          image: string;
+        };
+        const performedAt = new Date().toISOString();
+
+        const result = await portainerCall(
+          baseUrl,
+          apiKey,
+          "POST",
+          `/api/endpoints/${endpointId}/docker/images/create?fromImage=${
+            encodeURIComponent(image)
+          }`,
+        );
+
+        const handle = await context.writeResource(
+          "action_result",
+          "action_result",
+          {
+            instanceLabel,
+            baseUrl,
+            endpointId,
+            action: "pullImage",
+            target: image,
+            httpStatus: result.status,
+            ok: result.ok,
+            body: result.body.slice(0, 400),
+            performedAt,
+          },
+        );
+        return { dataHandles: [handle] };
       },
     },
   },

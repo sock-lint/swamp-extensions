@@ -1,7 +1,7 @@
 manifestVersion: 1
 name: "@lint/portainer"
-version: "2026.05.21.1"
-description: "Portainer API wrapper — snapshot endpoints, containers, and stacks across every docker host Portainer manages."
+version: "2026.05.21.2"
+description: "Portainer API wrapper — snapshot endpoints/containers/stacks across every docker host, and drive container actions (start/stop/restart/kill/pause/unpause) plus image pulls from swamp workflows."
 repository: "https://github.com/sock-lint/swamp-extensions"
 paths:
   base: manifest
