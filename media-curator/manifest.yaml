@@ -1,0 +1,23 @@
+manifestVersion: 1
+name: "@lint/media-curator"
+version: "2026.05.21.1"
+description: "Movie keep-score engine — fuses Radarr + Seerr + Tautulli + Plex inputs into a per-movie keep score with reason breakdown; emits drop_candidates for downstream pruning."
+repository: "https://github.com/sock-lint/swamp-extensions"
+paths:
+  base: manifest
+models:
+  - media-curator.ts
+additionalFiles:
+  - README.md
+  - LICENSE.txt
+labels:
+  - media
+  - curation
+  - radarr
+  - homelab
+platforms: []
+dependencies:
+  - "@lint/radarr"
+  - "@lint/seerr"
+  - "@lint/tautulli"
+  - "@lint/plex"

@@ -7,7 +7,7 @@ Each subdirectory is a self-contained extension package that ships via
 `swamp extension push`. The source here is the authoritative mirror — the
 published bundle is built from the same files.
 
-## Install one
+## Install
 
 ```bash
 swamp extension pull @lint/<name>
@@ -15,18 +15,51 @@ swamp extension pull @lint/<name>
 
 ## Index
 
-| Package                      | Description                                                                                                                        |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `@lint/adguard`              | AdGuard Home control-API wrapper — snapshot + reconcile DNS rewrites idempotently                                                  |
-| `@lint/nginx-proxy-manager`  | Nginx Proxy Manager API wrapper — snapshot proxy hosts, redirection hosts, and certificates                                        |
-| `@lint/plex`                 | Plex Media Server control-API wrapper — trigger library refreshes on demand                                                        |
-| `@lint/portainer`            | Portainer API wrapper — snapshot endpoints/containers/stacks and drive container actions (start/stop/restart/…) plus image pulls    |
-| `@lint/radarr`               | Radarr v3 wrapper — snapshot inventory (with on-disk IMDb parsing for drift detection) and delete movies via the standard *arr API |
-| `@lint/seerr`                | Overseerr / Jellyseerr request inventory — paginated requests with status, requester, target id; feeds the media curator                |
-| `@lint/sonarr`               | Sonarr v3 wrapper — snapshot inventory (statistics flattened for ended-but-incomplete queries) and delete series via the standard *arr API |
-| `@lint/tautulli`             | Tautulli watch-history wrapper — snapshot per-movie and per-series play counts and last-played timestamps; the never-watched signal for curation |
+### Service wrappers
 
-More to come — see [swamp-club.com/lint](https://swamp-club.com/lint).
+| Package                      | Description                                                              |
+| ---------------------------- | ------------------------------------------------------------------------ |
+| `@lint/adguard`              | AdGuard Home control-API wrapper — snapshot + reconcile DNS rewrites.    |
+| `@lint/nginx-proxy-manager`  | Nginx Proxy Manager admin-API — snapshot proxy hosts and certificates.   |
+| `@lint/portainer`            | Portainer API — snapshot endpoints, containers, stacks; drive actions.   |
+| `@lint/radarr`               | Radarr v3 inventory + IMDb-mismatch drift detection.                     |
+| `@lint/sonarr`               | Sonarr v3 inventory — series, episodes, root folders, ratings.           |
+| `@lint/seerr`                | Overseerr / Jellyseerr request inventory (provenance source).            |
+| `@lint/tautulli`             | Tautulli watch-history snapshot for movies + shows.                      |
+| `@lint/plex`                 | Plex library inventory — sections, items, last-played.                   |
+| `@lint/pbs`                  | Proxmox Backup Server freshness checker (fresh/stale/missing).           |
+| `@lint/discord-notifier`     | Opinionated Discord weekly report bundler for the curator stack.         |
+| `@lint/disk-monitor`         | SSH-based filesystem free-space monitor with thresholds.                 |
+| `@lint/docker-host`          | Agentless docker container discovery across LXCs (via PVE `pct exec`).   |
+| `@lint/image-updates`        | Docker image update tracker — local digest vs registry, per container.   |
+| `@lint/image-updater`        | Auto-applier for image updates — deny list, cooling, per-run cap.        |
+
+### Curator suite
+
+| Package                  | Description                                                               |
+| ------------------------ | ------------------------------------------------------------------------- |
+| `@lint/media-curator`    | Movie keep-score engine (Radarr + Seerr + Tautulli + Plex inputs).        |
+| `@lint/media-cleaner`    | Movie deletion executor — drives Radarr DELETE with tag + cooling gates.  |
+| `@lint/media-diagnostic` | Cross-instance Radarr diagnostic (duplicates, missing files, oversized).  |
+| `@lint/tv-curator`       | TV series keep-score engine with `endedUnwatched` penalty signal.         |
+| `@lint/tv-cleaner`       | Series deletion executor — drives Sonarr DELETE with tag + cooling gates. |
+
+## Pipeline
+
+```
+@keeb/proxmox ── cluster snapshot ──┐
+                                    │
+@lint/docker-host ─── inventory ────┼── @lint/image-updates ── @lint/image-updater
+                                    │
+@lint/radarr ──── inventory ────────┤
+@lint/sonarr ──── inventory ────────┼── @lint/media-curator ── @lint/media-cleaner
+@lint/seerr ─── requests ───────────┤   @lint/tv-curator    ── @lint/tv-cleaner
+@lint/tautulli ── history ──────────┤
+@lint/plex ───── inventory ─────────┘
+                                                │
+@lint/disk-monitor ── disk_usage ───────────────┤
+@lint/pbs ─────── status ───────────────────────┴── @lint/discord-notifier
+```
 
 ## License
 
@@ -34,5 +67,5 @@ MIT — see [LICENSE](./LICENSE).
 
 ## Issues
 
-Bug reports and feature requests welcome via GitHub issues, or via
+Bug reports and feature requests via GitHub issues, or via
 `swamp issue --extension @lint/<name>`.

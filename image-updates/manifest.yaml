@@ -1,0 +1,20 @@
+manifestVersion: 1
+name: "@lint/image-updates"
+version: "2026.05.21.1"
+description: "Docker image update tracker — compares local image digests against the registry to surface available updates per container."
+repository: "https://github.com/sock-lint/swamp-extensions"
+paths:
+  base: manifest
+models:
+  - image-updates.ts
+additionalFiles:
+  - README.md
+  - LICENSE.txt
+labels:
+  - docker
+  - updates
+  - registry
+  - homelab
+platforms: []
+dependencies:
+  - "@lint/docker-host"

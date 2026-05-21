@@ -1,7 +1,7 @@
 manifestVersion: 1
 name: "@lint/nginx-proxy-manager"
-version: "2026.05.21.1"
-description: "Nginx Proxy Manager API wrapper — snapshot proxy hosts, redirection hosts, and certificates."
+version: "2026.05.21.2"
+description: "Nginx Proxy Manager API wrapper — snapshot proxy hosts / redirection hosts / certificates, upsert proxy hosts idempotently (match by domain set), and delete proxy hosts by id."
 repository: "https://github.com/sock-lint/swamp-extensions"
 paths:
   base: manifest

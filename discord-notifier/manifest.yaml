@@ -1,0 +1,21 @@
+manifestVersion: 1
+name: "@lint/discord-notifier"
+version: "2026.05.21.1"
+description: "Opinionated weekly Discord report — composes embeds + CSV attachments from the @lint curator and ops models, posts via webhook."
+repository: "https://github.com/sock-lint/swamp-extensions"
+paths:
+  base: manifest
+models:
+  - discord-notifier.ts
+additionalFiles:
+  - README.md
+  - LICENSE.txt
+labels:
+  - discord
+  - notifications
+  - reporting
+  - homelab
+platforms: []
+dependencies:
+  - "@lint/media-curator"
+  - "@lint/tv-curator"

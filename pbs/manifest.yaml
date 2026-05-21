@@ -1,0 +1,18 @@
+manifestVersion: 1
+name: "@lint/pbs"
+version: "2026.05.21.1"
+description: "Proxmox Backup Server check — classify guests as fresh / stale / missing against a PBS datastore using API token auth."
+repository: "https://github.com/sock-lint/swamp-extensions"
+paths:
+  base: manifest
+models:
+  - pbs.ts
+additionalFiles:
+  - README.md
+  - LICENSE.txt
+labels:
+  - proxmox
+  - pbs
+  - backup
+  - homelab
+platforms: []

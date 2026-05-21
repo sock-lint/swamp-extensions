@@ -1,24 +1,10 @@
 /**
  * `@lint/tautulli` — swamp model wrapper.
  *
- * Two methods snapshot watch-history from a Tautulli instance — the
- * `play_count` + `last_played` signal that turns "what's in my library?" into
- * "what have I actually watched?":
- *
- *   - `sync`      — per-movie play counts and last-played timestamps for
- *                   movie sections; writes `history` + `summary` resources.
- *   - `syncShows` — per-series aggregated play counts for show sections;
- *                   writes a `show_history` resource.
- *
- * Both methods auto-detect sections by `section_type=movie`/`show` unless
- * `movieSectionIds` / `showSectionIds` is set, and paginate the Tautulli
- * `get_library_media_info` call in batches of 1000.
- *
- * Auth: Tautulli `apikey` query parameter (Settings → Web Interface → API).
- * Transport: curl via Deno.Command so any failing call can be replayed as a
- * one-liner with the same baseUrl + apiKey.
+ * TODO: hand-edit this header with method summary, auth model, and links.
  */
 import { z } from "npm:zod@4";
+
 
 // Swamp wires args/context at runtime; the model loader doesn't expose types.
 // deno-lint-ignore no-explicit-any
@@ -34,20 +20,13 @@ interface ExecuteContext {
     // deno-lint-ignore no-explicit-any
   ): Promise<any>;
 }
-
 const GlobalArgsSchema = z.object({
-  baseUrl: z.string().describe(
-    "Tautulli base URL, e.g. http://192.168.4.50:8181",
-  ),
-  apiKey: z.string().describe(
-    "Tautulli API key (Settings → Web Interface → API)",
-  ),
-  movieSectionIds: z.array(z.number()).optional().describe(
-    "Plex section IDs to include (movies). Omit to auto-detect all section_type=movie.",
-  ),
-  showSectionIds: z.array(z.number()).optional().describe(
-    "Plex section IDs to include (shows). Omit to auto-detect all section_type=show.",
-  ),
+  baseUrl: z.string().describe("Tautulli base URL, e.g. http://192.168.4.50:8181"),
+  apiKey: z.string().describe("Tautulli API key (Settings → Web Interface → API)"),
+  movieSectionIds: z.array(z.number()).optional()
+    .describe("Plex section IDs to include (movies only). Omit to auto-detect all section_type=movie."),
+  showSectionIds: z.array(z.number()).optional()
+    .describe("Plex section IDs to include (shows only). Omit to auto-detect all section_type=show."),
 });
 
 const MovieStatSchema = z.object({
@@ -65,9 +44,7 @@ const ShowStatSchema = z.object({
   ratingKey: z.string(),
   title: z.string(),
   year: z.number().optional(),
-  playCount: z.number().describe(
-    "Aggregated play count across all episodes of the series",
-  ),
+  playCount: z.number().describe("Aggregated play count across all episodes of the series"),
   lastPlayedUnix: z.number().optional(),
 });
 
@@ -105,16 +82,12 @@ async function tautulliCall(
   apiKey: string,
   cmd: string,
   extra: Record<string, string> = {},
-  // deno-lint-ignore no-explicit-any
+// deno-lint-ignore no-explicit-any
 ): Promise<any> {
   const params = new URLSearchParams({ apikey: apiKey, cmd, ...extra });
   const url = `${baseUrl.replace(/\/$/, "")}/api/v2?${params.toString()}`;
   const args = ["-sS", "-w", "\n__HTTP_STATUS__:%{http_code}", url];
-  const command = new Deno.Command("curl", {
-    args,
-    stdout: "piped",
-    stderr: "piped",
-  });
+  const command = new Deno.Command("curl", { args, stdout: "piped", stderr: "piped" });
   const { code, stdout, stderr } = await command.output();
   if (code !== 0) {
     throw new Error(`curl exit ${code}: ${new TextDecoder().decode(stderr)}`);
@@ -128,11 +101,7 @@ async function tautulliCall(
   }
   const parsed = JSON.parse(body);
   if (parsed.response?.result !== "success") {
-    throw new Error(
-      `Tautulli ${cmd} reported failure: ${
-        JSON.stringify(parsed.response).slice(0, 400)
-      }`,
-    );
+    throw new Error(`Tautulli ${cmd} reported failure: ${JSON.stringify(parsed.response).slice(0, 400)}`);
   }
   return parsed.response.data;
 }
@@ -152,21 +121,19 @@ export const model: {
   globalArguments: GlobalArgsSchema,
   resources: {
     "history": {
-      description:
-        "Per-movie watch history (play_count, last_played) for selected sections",
+      description: "Per-movie watch history (play_count, last_played) for selected sections",
       schema: HistorySchema,
       lifetime: "infinite" as const,
       garbageCollection: 5,
     },
     "show_history": {
-      description:
-        "Per-series aggregated watch history for selected show sections",
+      description: "Per-series aggregated watch history for selected show sections",
       schema: ShowHistorySchema,
       lifetime: "infinite" as const,
       garbageCollection: 5,
     },
     "summary": {
-      description: "Top-line watch counts across all movie sections",
+      description: "Top-line watch counts",
       schema: SummarySchema,
       lifetime: "infinite" as const,
       garbageCollection: 5,
@@ -174,8 +141,7 @@ export const model: {
   },
   methods: {
     sync: {
-      description:
-        "Fetch per-movie play_count + last_played from Tautulli for movie sections",
+      description: "Fetch per-movie play_count + last_played from Tautulli for movie sections",
       arguments: z.object({}),
       execute: async (_args: ExecuteArgs, context: ExecuteContext) => {
         const { baseUrl, apiKey, movieSectionIds } = context.globalArgs;
@@ -193,27 +159,21 @@ export const model: {
         const wanted: number[] = (movieSectionIds && movieSectionIds.length > 0)
           ? movieSectionIds
           : allMovieSections.map((s) => s.sectionId);
-        const sectionsUsed = allMovieSections.filter((s) =>
-          wanted.includes(s.sectionId)
-        );
+        const sectionsUsed = allMovieSections.filter((s) => wanted.includes(s.sectionId));
 
         const movies: z.infer<typeof MovieStatSchema>[] = [];
         for (const sec of sectionsUsed) {
+          // pull in batches of 1000
           const batchSize = 1000;
           let start = 0;
           while (true) {
-            const data = await tautulliCall(
-              baseUrl,
-              apiKey,
-              "get_library_media_info",
-              {
-                section_id: String(sec.sectionId),
-                length: String(batchSize),
-                start: String(start),
-                order_column: "title",
-                order_dir: "asc",
-              },
-            );
+            const data = await tautulliCall(baseUrl, apiKey, "get_library_media_info", {
+              section_id: String(sec.sectionId),
+              length: String(batchSize),
+              start: String(start),
+              order_column: "title",
+              order_dir: "asc",
+            });
             // deno-lint-ignore no-explicit-any
             const rows: any[] = data.data ?? [];
             for (const r of rows) {
@@ -223,9 +183,7 @@ export const model: {
                 title: r.title,
                 year: r.year ? Number(r.year) : undefined,
                 playCount: Number(r.play_count ?? 0),
-                lastPlayedUnix: r.last_played
-                  ? Number(r.last_played)
-                  : undefined,
+                lastPlayedUnix: r.last_played ? Number(r.last_played) : undefined,
                 fileSize: r.file_size ? Number(r.file_size) : undefined,
               });
             }
@@ -260,8 +218,7 @@ export const model: {
       },
     },
     syncShows: {
-      description:
-        "Fetch per-series aggregated play counts from Tautulli for show sections",
+      description: "Fetch per-series play counts from Tautulli for show sections",
       arguments: z.object({}),
       execute: async (_args: ExecuteArgs, context: ExecuteContext) => {
         const { baseUrl, apiKey, showSectionIds } = context.globalArgs;
@@ -279,27 +236,20 @@ export const model: {
         const wanted: number[] = (showSectionIds && showSectionIds.length > 0)
           ? showSectionIds
           : allShowSections.map((s) => s.sectionId);
-        const sectionsUsed = allShowSections.filter((s) =>
-          wanted.includes(s.sectionId)
-        );
+        const sectionsUsed = allShowSections.filter((s) => wanted.includes(s.sectionId));
 
         const shows: z.infer<typeof ShowStatSchema>[] = [];
         for (const sec of sectionsUsed) {
           const batchSize = 1000;
           let start = 0;
           while (true) {
-            const data = await tautulliCall(
-              baseUrl,
-              apiKey,
-              "get_library_media_info",
-              {
-                section_id: String(sec.sectionId),
-                length: String(batchSize),
-                start: String(start),
-                order_column: "title",
-                order_dir: "asc",
-              },
-            );
+            const data = await tautulliCall(baseUrl, apiKey, "get_library_media_info", {
+              section_id: String(sec.sectionId),
+              length: String(batchSize),
+              start: String(start),
+              order_column: "title",
+              order_dir: "asc",
+            });
             // deno-lint-ignore no-explicit-any
             const rows: any[] = data.data ?? [];
             for (const r of rows) {
@@ -309,9 +259,7 @@ export const model: {
                 title: r.title,
                 year: r.year ? Number(r.year) : undefined,
                 playCount: Number(r.play_count ?? 0),
-                lastPlayedUnix: r.last_played
-                  ? Number(r.last_played)
-                  : undefined,
+                lastPlayedUnix: r.last_played ? Number(r.last_played) : undefined,
               });
             }
             if (rows.length < batchSize) break;
@@ -328,11 +276,7 @@ export const model: {
           fetchedAt,
         };
 
-        const handle = await context.writeResource(
-          "show_history",
-          "show_history",
-          history,
-        );
+        const handle = await context.writeResource("show_history", "show_history", history);
         return { dataHandles: [handle] };
       },
     },

@@ -1,0 +1,18 @@
+manifestVersion: 1
+name: "@lint/docker-host"
+version: "2026.05.21.1"
+description: "Docker container discovery across a Proxmox cluster — SSHes to each PVE node, runs `pct exec <vmid> docker ps` on every docker-tagged LXC."
+repository: "https://github.com/sock-lint/swamp-extensions"
+paths:
+  base: manifest
+models:
+  - docker-host.ts
+additionalFiles:
+  - README.md
+  - LICENSE.txt
+labels:
+  - docker
+  - proxmox
+  - discovery
+  - homelab
+platforms: []

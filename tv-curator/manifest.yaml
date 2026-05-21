@@ -1,0 +1,24 @@
+manifestVersion: 1
+name: "@lint/tv-curator"
+version: "2026.05.21.1"
+description: "TV show keep-score engine — fuses Sonarr + Seerr + Tautulli + Plex into a per-series keep score with an endedUnwatched penalty for never-played completed series."
+repository: "https://github.com/sock-lint/swamp-extensions"
+paths:
+  base: manifest
+models:
+  - tv-curator.ts
+additionalFiles:
+  - README.md
+  - LICENSE.txt
+labels:
+  - media
+  - curation
+  - sonarr
+  - tv
+  - homelab
+platforms: []
+dependencies:
+  - "@lint/sonarr"
+  - "@lint/seerr"
+  - "@lint/tautulli"
+  - "@lint/plex"

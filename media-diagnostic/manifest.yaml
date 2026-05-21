@@ -1,0 +1,19 @@
+manifestVersion: 1
+name: "@lint/media-diagnostic"
+version: "2026.05.21.1"
+description: "Per-title score-breakdown diagnostic for the media-curator — show why a specific movie scored what it scored, with all signal weights expanded."
+repository: "https://github.com/sock-lint/swamp-extensions"
+paths:
+  base: manifest
+models:
+  - media-diagnostic.ts
+additionalFiles:
+  - README.md
+  - LICENSE.txt
+labels:
+  - media
+  - diagnostic
+  - homelab
+platforms: []
+dependencies:
+  - "@lint/media-curator"

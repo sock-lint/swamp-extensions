@@ -1,0 +1,21 @@
+manifestVersion: 1
+name: "@lint/media-cleaner"
+version: "2026.05.21.1"
+description: "Movie deletion executor — consumes media-curator drop_candidates, honors the keep-forever tag, deletes via Radarr API with cooling-period gate."
+repository: "https://github.com/sock-lint/swamp-extensions"
+paths:
+  base: manifest
+models:
+  - media-cleaner.ts
+additionalFiles:
+  - README.md
+  - LICENSE.txt
+labels:
+  - media
+  - cleanup
+  - radarr
+  - homelab
+platforms: []
+dependencies:
+  - "@lint/media-curator"
+  - "@lint/radarr"

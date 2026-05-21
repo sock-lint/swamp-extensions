@@ -1,0 +1,17 @@
+manifestVersion: 1
+name: "@lint/disk-monitor"
+version: "2026.05.21.1"
+description: "Free-space monitor — SSHes to a target host, runs df, classifies mounts as ok/warn/crit against configurable thresholds."
+repository: "https://github.com/sock-lint/swamp-extensions"
+paths:
+  base: manifest
+models:
+  - disk-monitor.ts
+additionalFiles:
+  - README.md
+  - LICENSE.txt
+labels:
+  - monitoring
+  - storage
+  - homelab
+platforms: []

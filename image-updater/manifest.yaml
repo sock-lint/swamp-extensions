@@ -1,0 +1,20 @@
+manifestVersion: 1
+name: "@lint/image-updater"
+version: "2026.05.21.1"
+description: "Auto-applier for docker image updates — pulls + restarts compose stacks with deny lists, cooling periods, and a per-run cap."
+repository: "https://github.com/sock-lint/swamp-extensions"
+paths:
+  base: manifest
+models:
+  - image-updater.ts
+additionalFiles:
+  - README.md
+  - LICENSE.txt
+labels:
+  - docker
+  - updates
+  - automation
+  - homelab
+platforms: []
+dependencies:
+  - "@lint/image-updates"

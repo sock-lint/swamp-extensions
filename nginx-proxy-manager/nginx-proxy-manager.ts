@@ -1,15 +1,21 @@
 /**
  * `@lint/nginx-proxy-manager` — Nginx Proxy Manager admin-API wrapper for swamp.
  *
- * Single method:
+ * Three methods:
  *
  *   - `sync` — log in via `POST /api/tokens`, then fetch `/api/nginx/proxy-hosts`,
  *     `/api/nginx/redirection-hosts`, and `/api/nginx/certificates`. Emits a
  *     full `inventory` resource and a compact `summary` (counts + certs
  *     expiring within 30 days).
+ *   - `upsertProxyHost` — declarative proxy-host management: matches existing
+ *     hosts by exact set of `domainNames`; if a match exists, `PUT`s the new
+ *     config to that id, otherwise `POST`s a new host. Idempotent. Result
+ *     records `created` vs `updated` and the host id.
+ *   - `deleteProxyHost` — `DELETE /api/nginx/proxy-hosts/{id}`. Non-throwing
+ *     so a 404 (already gone) records the outcome instead of crashing.
  *
  * Auth is email/password against the NPM admin UI account; the bearer token
- * is acquired per `sync` call and never persisted.
+ * is acquired per call and never persisted.
  */
 import { z } from "npm:zod@4";
 
@@ -99,6 +105,53 @@ const SummarySchema = z.object({
   fetchedAt: z.iso.datetime(),
 });
 
+const ProxyHostInputSchema = z.object({
+  domainNames: z.array(z.string()).min(1).describe(
+    "Domains that resolve to this proxy host (at least one). The exact set " +
+      "is also the match key for upsert.",
+  ),
+  forwardScheme: z.enum(["http", "https"]).default("http"),
+  forwardHost: z.string().describe(
+    "Upstream host (IP or hostname). Internal to the network NPM can reach.",
+  ),
+  forwardPort: z.number().describe("Upstream TCP port"),
+  certificateId: z.number().default(0).describe(
+    "NPM certificate id (0 = no SSL). Look up existing IDs via the certificates list in the `inventory` resource.",
+  ),
+  sslForced: z.boolean().default(false),
+  http2Support: z.boolean().default(false),
+  hstsEnabled: z.boolean().default(false),
+  hstsSubdomains: z.boolean().default(false),
+  blockExploits: z.boolean().default(true),
+  allowWebsocketUpgrade: z.boolean().default(true),
+  cachingEnabled: z.boolean().default(false),
+  accessListId: z.number().default(0),
+  advancedConfig: z.string().default("").describe(
+    "Raw nginx config snippet inserted into the proxy host block (NPM's 'Advanced' tab)",
+  ),
+});
+
+const UpsertResultSchema = z.object({
+  instanceLabel: z.string(),
+  baseUrl: z.string(),
+  domainNames: z.array(z.string()),
+  action: z.enum(["created", "updated"]).describe(
+    "Whether the call ran POST (created) or PUT (updated)",
+  ),
+  proxyHostId: z.number().describe("NPM proxy host id after the call"),
+  performedAt: z.iso.datetime(),
+});
+
+const DeleteProxyHostResultSchema = z.object({
+  instanceLabel: z.string(),
+  baseUrl: z.string(),
+  proxyHostId: z.number(),
+  ok: z.boolean(),
+  httpStatus: z.number(),
+  body: z.string().describe("Response body (truncated to 400 chars)"),
+  deletedAt: z.iso.datetime(),
+});
+
 async function npmRequest(
   baseUrl: string,
   token: string | null,
@@ -167,6 +220,59 @@ async function npmLogin(
   return result.token;
 }
 
+/**
+ * Non-throwing twin of `npmRequest`. Returns `{ ok, status, body }` so
+ * destructive methods can record outcomes in a resource instead of crashing
+ * a batch of calls on a single failure (e.g. a 404 for an already-deleted
+ * proxy host).
+ */
+async function npmCall(
+  baseUrl: string,
+  token: string | null,
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<{ ok: boolean; status: number; body: string }> {
+  const url = `${baseUrl.replace(/\/$/, "")}${path}`;
+  const args = [
+    "-sS",
+    "-X",
+    method,
+    "-H",
+    "Accept: application/json",
+    "-w",
+    "\n__HTTP_STATUS__:%{http_code}",
+  ];
+  if (token) args.push("-H", `Authorization: Bearer ${token}`);
+  if (body !== undefined) {
+    args.push(
+      "-H",
+      "Content-Type: application/json",
+      "-d",
+      JSON.stringify(body),
+    );
+  }
+  args.push(url);
+  const cmd = new Deno.Command("curl", {
+    args,
+    stdout: "piped",
+    stderr: "piped",
+  });
+  const { code, stdout, stderr } = await cmd.output();
+  if (code !== 0) {
+    return {
+      ok: false,
+      status: 0,
+      body: `curl exit ${code}: ${new TextDecoder().decode(stderr)}`,
+    };
+  }
+  const raw = new TextDecoder().decode(stdout);
+  const m = raw.match(/\n__HTTP_STATUS__:(\d+)$/);
+  const status = m ? parseInt(m[1], 10) : 0;
+  const text = m ? raw.slice(0, m.index) : raw;
+  return { ok: status >= 200 && status < 300, status, body: text };
+}
+
 /** Swamp model definition for `@lint/nginx-proxy-manager`. */
 export const model: {
   type: string;
@@ -177,7 +283,7 @@ export const model: {
   methods: Record<string, unknown>;
 } = {
   type: "@lint/nginx-proxy-manager",
-  version: "2026.05.21.1",
+  version: "2026.05.21.2",
   reports: [] as string[],
   globalArguments: GlobalArgsSchema,
   resources: {

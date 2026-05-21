@@ -1,0 +1,22 @@
+manifestVersion: 1
+name: "@lint/tv-cleaner"
+version: "2026.05.21.1"
+description: "TV series deletion executor — consumes tv-curator drop_candidates, honors keep-forever tags, deletes via Sonarr API with cooling-period gate."
+repository: "https://github.com/sock-lint/swamp-extensions"
+paths:
+  base: manifest
+models:
+  - tv-cleaner.ts
+additionalFiles:
+  - README.md
+  - LICENSE.txt
+labels:
+  - media
+  - cleanup
+  - sonarr
+  - tv
+  - homelab
+platforms: []
+dependencies:
+  - "@lint/tv-curator"
+  - "@lint/sonarr"
