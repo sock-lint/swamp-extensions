@@ -1,0 +1,18 @@
+manifestVersion: 1
+name: "@lint/seerr"
+version: "2026.05.21.2"
+description: "Overseerr / Jellyseerr request inventory — paginated requests with status, requester, target id, ready for the media curator."
+repository: "https://github.com/sock-lint/swamp-extensions"
+paths:
+  base: manifest
+models:
+  - seerr.ts
+additionalFiles:
+  - README.md
+  - LICENSE.txt
+labels:
+  - overseerr
+  - jellyseerr
+  - media
+  - homelab
+platforms: []

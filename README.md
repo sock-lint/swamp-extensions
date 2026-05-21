@@ -22,6 +22,7 @@ swamp extension pull @lint/<name>
 | `@lint/plex`                 | Plex Media Server control-API wrapper — trigger library refreshes on demand                                                        |
 | `@lint/portainer`            | Portainer API wrapper — snapshot endpoints, containers, and stacks across every docker host Portainer manages                      |
 | `@lint/radarr`               | Radarr v3 inventory wrapper — snapshot movies, root folders, and tags; parses on-disk IMDb IDs so Radarr metadata drift is visible |
+| `@lint/seerr`                | Overseerr / Jellyseerr request inventory — paginated requests with status, requester, target id; feeds the media curator                |
 | `@lint/sonarr`               | Sonarr v3 inventory wrapper — snapshot series, root folders, and tags; flattens statistics so ended-but-incomplete queries are trivial |
 | `@lint/tautulli`             | Tautulli watch-history wrapper — snapshot per-movie and per-series play counts and last-played timestamps; the never-watched signal for curation |
 
