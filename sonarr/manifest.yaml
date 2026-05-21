@@ -1,0 +1,18 @@
+manifestVersion: 1
+name: "@lint/sonarr"
+version: "2026.05.21.1"
+description: "Sonarr v3 inventory wrapper — snapshot series, root folders, and tags; flattens statistics (percentOfEpisodes, episodeFileCount) so ended-but-incomplete cleanup queries are trivial."
+repository: "https://github.com/sock-lint/swamp-extensions"
+paths:
+  base: manifest
+models:
+  - sonarr.ts
+additionalFiles:
+  - README.md
+  - LICENSE.txt
+labels:
+  - sonarr
+  - tv
+  - arr
+  - homelab
+platforms: []
