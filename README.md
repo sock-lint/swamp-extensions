@@ -15,9 +15,13 @@ swamp extension pull @lint/<name>
 
 ## Index
 
-| Package         | Description                                                                       |
-| --------------- | --------------------------------------------------------------------------------- |
-| `@lint/adguard` | AdGuard Home control-API wrapper — snapshot + reconcile DNS rewrites idempotently |
+| Package                      | Description                                                                                                                        |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `@lint/adguard`              | AdGuard Home control-API wrapper — snapshot + reconcile DNS rewrites idempotently                                                  |
+| `@lint/nginx-proxy-manager`  | Nginx Proxy Manager API wrapper — snapshot proxy hosts, redirection hosts, and certificates                                        |
+| `@lint/plex`                 | Plex Media Server control-API wrapper — trigger library refreshes on demand                                                        |
+| `@lint/portainer`            | Portainer API wrapper — snapshot endpoints, containers, and stacks across every docker host Portainer manages                      |
+| `@lint/radarr`               | Radarr v3 inventory wrapper — snapshot movies, root folders, and tags; parses on-disk IMDb IDs so Radarr metadata drift is visible |
 
 More to come — see [swamp-club.com/lint](https://swamp-club.com/lint).
 

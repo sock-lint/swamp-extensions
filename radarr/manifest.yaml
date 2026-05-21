@@ -1,0 +1,18 @@
+manifestVersion: 1
+name: "@lint/radarr"
+version: "2026.05.21.1"
+description: "Radarr v3 inventory wrapper — snapshot movies, root folders, and tags into structured swamp resources; parses on-disk IMDb IDs so Radarr metadata drift is detectable."
+repository: "https://github.com/sock-lint/swamp-extensions"
+paths:
+  base: manifest
+models:
+  - radarr.ts
+additionalFiles:
+  - README.md
+  - LICENSE.txt
+labels:
+  - radarr
+  - media
+  - arr
+  - homelab
+platforms: []

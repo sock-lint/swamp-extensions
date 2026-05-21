@@ -1,18 +1,17 @@
 manifestVersion: 1
-name: "@lint/adguard"
+name: "@lint/plex"
 version: "2026.05.21.1"
-description: "AdGuard Home control-API wrapper — snapshot status/stats/clients/rewrites and reconcile DNS rewrites to a desired set."
+description: "Plex Media Server control-API wrapper — trigger library refreshes on demand and capture per-section outcomes."
 repository: "https://github.com/sock-lint/swamp-extensions"
 paths:
   base: manifest
 models:
-  - adguard.ts
+  - plex.ts
 additionalFiles:
   - README.md
   - LICENSE.txt
 labels:
-  - dns
-  - networking
-  - adguard
+  - plex
+  - media
   - homelab
 platforms: []

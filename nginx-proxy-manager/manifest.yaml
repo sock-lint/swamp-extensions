@@ -1,18 +1,18 @@
 manifestVersion: 1
-name: "@lint/adguard"
+name: "@lint/nginx-proxy-manager"
 version: "2026.05.21.1"
-description: "AdGuard Home control-API wrapper — snapshot status/stats/clients/rewrites and reconcile DNS rewrites to a desired set."
+description: "Nginx Proxy Manager API wrapper — snapshot proxy hosts, redirection hosts, and certificates."
 repository: "https://github.com/sock-lint/swamp-extensions"
 paths:
   base: manifest
 models:
-  - adguard.ts
+  - nginx-proxy-manager.ts
 additionalFiles:
   - README.md
   - LICENSE.txt
 labels:
-  - dns
+  - nginx
+  - reverse-proxy
   - networking
-  - adguard
-  - homelab
+  - npm
 platforms: []

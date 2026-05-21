@@ -1,18 +1,18 @@
 manifestVersion: 1
-name: "@lint/adguard"
+name: "@lint/portainer"
 version: "2026.05.21.1"
-description: "AdGuard Home control-API wrapper — snapshot status/stats/clients/rewrites and reconcile DNS rewrites to a desired set."
+description: "Portainer API wrapper — snapshot endpoints, containers, and stacks across every docker host Portainer manages."
 repository: "https://github.com/sock-lint/swamp-extensions"
 paths:
   base: manifest
 models:
-  - adguard.ts
+  - portainer.ts
 additionalFiles:
   - README.md
   - LICENSE.txt
 labels:
-  - dns
-  - networking
-  - adguard
+  - docker
+  - portainer
+  - containers
   - homelab
 platforms: []
