@@ -1,0 +1,19 @@
+manifestVersion: 1
+name: "@lint/tautulli"
+version: "2026.05.21.1"
+description: "Tautulli watch-history wrapper — snapshot per-movie and per-series play counts plus last-played timestamps from a Plex Tautulli instance; the signal feeds keep/drop curation."
+repository: "https://github.com/sock-lint/swamp-extensions"
+paths:
+  base: manifest
+models:
+  - tautulli.ts
+additionalFiles:
+  - README.md
+  - LICENSE.txt
+labels:
+  - tautulli
+  - plex
+  - media
+  - watch-history
+  - homelab
+platforms: []
