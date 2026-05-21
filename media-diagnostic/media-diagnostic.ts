@@ -1,17 +1,18 @@
 /**
- * `@lint/media-diagnostic` — companion to `@lint/media-curator` that
- * explains why a specific title scored what it scored.
+ * `@lint/media-diagnostic` — cross-instance Radarr storage waste scanner.
  *
  * Single method:
  *
- *   - `explain` — given `title` (case-insensitive, year-optional) or
- *     `imdbId`, find the matching entry in the curator's latest `scored`
- *     resource and emit a `report` resource detailing every signal: review
- *     breakdown, tenure, plays, requests, tags, audio language, and any
- *     custom penalties.
+ *   - `scan` — compare a default (1080p) Radarr inventory against a 4K
+ *     Radarr inventory and surface three kinds of waste: duplicates (same
+ *     `folderName` in both instances), missing files (Radarr entries with
+ *     `hasFile: false`), and oversized files (above `oversizedThresholdBytes`,
+ *     default 60 GiB). Emits `findings` (per-entry detail) and `summary`
+ *     (counts + reclaim totals across three reclaim strategies).
  *
- * Pure read-only — no computation, just re-presents the curator's stored
- * scoring rationale for one title at a time.
+ * Read-only — pair with `@lint/media-cleaner` to act on the findings.
+ * Duplicate matching uses `folderName` (basename), which catches the
+ * canonical "same movie, two copies" case without needing TMDb-id lookup.
  */
 import { z } from "npm:zod@4";
 

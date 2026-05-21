@@ -1,7 +1,7 @@
 manifestVersion: 1
 name: "@lint/media-diagnostic"
-version: "2026.05.21.1"
-description: "Per-title score-breakdown diagnostic for the media-curator — show why a specific movie scored what it scored, with all signal weights expanded."
+version: "2026.05.21.2"
+description: "Cross-instance Radarr storage scanner — compares default (1080p) + 4K inventories for duplicates, missing files, and oversized titles."
 repository: "https://github.com/sock-lint/swamp-extensions"
 paths:
   base: manifest
@@ -13,7 +13,8 @@ additionalFiles:
 labels:
   - media
   - diagnostic
+  - radarr
   - homelab
 platforms: []
 dependencies:
-  - "@lint/media-curator"
+  - "@lint/radarr"
