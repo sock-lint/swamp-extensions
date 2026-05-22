@@ -1,0 +1,20 @@
+manifestVersion: 1
+name: "@lint/dns-policy"
+version: "2026.05.22.1"
+description: "DNS policy compiler — merge manual vhosts + auto-discovered proxy hosts + static rewrites into a deduped desired list for an internal-DNS reconciler (e.g. AdGuard Home), plus a separate hostname list for public exposure."
+repository: "https://github.com/sock-lint/swamp-extensions"
+paths:
+  base: manifest
+models:
+  - dns-policy.ts
+workflows:
+  - dns-rewrite-sync/workflow.yaml
+additionalFiles:
+  - README.md
+  - LICENSE.txt
+labels:
+  - dns
+  - networking
+  - policy
+  - homelab
+platforms: []

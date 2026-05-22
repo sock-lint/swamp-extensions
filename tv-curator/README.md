@@ -57,6 +57,31 @@ swamp data get drop_candidates --json | jq '.candidates[:10]'
 | `drop_candidates` | infinite | Subset below `dropThreshold`, sorted by reclaim potential.   |
 | `protected_drops` | infinite | Would-be drops that the `keep-forever` tag shielded.         |
 
+## Wire it: the `weekly-tv-refresh` workflow
+
+This package ships an example weekly pipeline:
+
+```bash
+swamp workflow run weekly-tv-refresh
+```
+
+Three jobs in sequence:
+
+1. **sync** — `sonarr.sync`, `seerr.sync`, `tautulli.syncShows` in parallel.
+   Note `syncShows` (not `sync`) — TV watch history is a separate Tautulli
+   endpoint from movie watch history.
+2. **score** — `tv-curator.score` over the fresh data.
+3. **clean** — `tv-cleaner.applyDrops` in **dry-run** by default
+   (`apply: false`). Flip to `apply: true` after a bake period reviewing the
+   candidate list, and the cleaner's internal cooling-period gate will only
+   delete candidates that have persisted across multiple weeks.
+
+Expected model **instance names**: `sonarr`, `seerr`, `tautulli`,
+`tv-curator`, `tv-cleaner`.
+
+Pair with [`@lint/tv-cleaner`](https://github.com/sock-lint/swamp-extensions/tree/main/tv-cleaner)
+for the cleaner side.
+
 ## License
 
 MIT — see [LICENSE.txt](./LICENSE.txt).

@@ -1,0 +1,87 @@
+name: '@lint/weekly-media-refresh'
+description: |
+  Weekly movie-library keep/drop pipeline:
+    sync (radarr + seerr + tautulli) → media-curator.score → media-cleaner.applyDrops (dry-run)
+
+  The bundled workflow runs the cleaner in dry-run mode by default (apply
+  defaults to false on media-cleaner.applyDrops). After a bake period
+  reviewing the candidate list each week, flip the `apply: true` input on
+  the `media-cleaner-apply` step to start deleting cooled candidates. The
+  cleaner's internal cooling-period gate still defers first-time candidates
+  by one cycle (default 6 days), so `apply: true` is not as scary as it
+  sounds — only persistent candidates get acted on.
+
+  Assumes model instances named `radarr`, `seerr`, `tautulli`,
+  `media-curator`, `media-cleaner`. Rename or add steps if you run multiple
+  Radarr instances (1080p + 4K).
+version: 1
+tags: {}
+jobs:
+  - name: sync
+    description: Pull fresh inventory + request + watch-history snapshots
+    weight: 0
+    dependsOn: []
+    steps:
+      - name: radarr-sync
+        description: Snapshot Radarr movie library
+        task:
+          type: model_method
+          modelIdOrName: radarr
+          methodName: sync
+        dependsOn: []
+        weight: 0
+        allowFailure: false
+      - name: seerr-sync
+        description: Snapshot Overseerr/Jellyseerr request history
+        task:
+          type: model_method
+          modelIdOrName: seerr
+          methodName: sync
+        dependsOn: []
+        weight: 0
+        allowFailure: false
+      - name: tautulli-sync
+        description: Snapshot Tautulli movie watch history
+        task:
+          type: model_method
+          modelIdOrName: tautulli
+          methodName: sync
+        dependsOn: []
+        weight: 0
+        allowFailure: false
+  - name: score
+    description: Run the curator against fresh data
+    weight: 0
+    dependsOn:
+      - job: sync
+        condition:
+          type: succeeded
+    steps:
+      - name: media-curator-score
+        description: Score every movie for keep/drop with reason breakdown
+        task:
+          type: model_method
+          modelIdOrName: media-curator
+          methodName: score
+        dependsOn: []
+        weight: 0
+        allowFailure: false
+  - name: clean
+    description: Surface (or apply) drop candidates. Defaults to dry-run.
+    weight: 0
+    dependsOn:
+      - job: score
+        condition:
+          type: succeeded
+    steps:
+      - name: media-cleaner-apply
+        description: Run the cleaner. Flip `apply: true` after a bake period to actually delete cooled candidates.
+        task:
+          type: model_method
+          modelIdOrName: media-cleaner
+          methodName: applyDrops
+          inputs:
+            apply: false
+        dependsOn: []
+        weight: 0
+        allowFailure: false

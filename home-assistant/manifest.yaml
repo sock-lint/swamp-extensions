@@ -1,0 +1,18 @@
+manifestVersion: 1
+name: "@lint/home-assistant"
+version: "2026.05.22.1"
+description: "Home Assistant REST-API wrapper — automation lifecycle CRUD plus a generic service-call actuator for any HA domain."
+repository: "https://github.com/sock-lint/swamp-extensions"
+paths:
+  base: manifest
+models:
+  - home_assistant.ts
+additionalFiles:
+  - README.md
+  - LICENSE.txt
+labels:
+  - home-assistant
+  - homelab
+  - automation
+  - iot
+platforms: []

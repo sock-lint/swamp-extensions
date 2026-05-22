@@ -1,0 +1,89 @@
+name: '@lint/weekly-tv-refresh'
+description: |
+  Weekly TV-library keep/drop pipeline:
+    sync (sonarr + seerr + tautulli) → tv-curator.score → tv-cleaner.applyDrops (dry-run)
+
+  The bundled workflow runs the cleaner in dry-run mode by default (apply
+  defaults to false on tv-cleaner.applyDrops). After a bake period reviewing
+  the candidate list each week, flip the `apply: true` input on the
+  `tv-cleaner-apply` step to start deleting cooled candidates. The cleaner's
+  internal cooling-period gate still defers first-time candidates by one
+  cycle (default 6 days), so `apply: true` is not as scary as it sounds —
+  only persistent candidates get acted on.
+
+  Tautulli sync uses `syncShows` (not `sync`) — TV watch history is a
+  separate API path from movie watch history.
+
+  Assumes model instances named `sonarr`, `seerr`, `tautulli`, `tv-curator`,
+  `tv-cleaner`.
+version: 1
+tags: {}
+jobs:
+  - name: sync
+    description: Pull fresh inventory + request + watch-history snapshots
+    weight: 0
+    dependsOn: []
+    steps:
+      - name: sonarr-sync
+        description: Snapshot Sonarr series library
+        task:
+          type: model_method
+          modelIdOrName: sonarr
+          methodName: sync
+        dependsOn: []
+        weight: 0
+        allowFailure: false
+      - name: seerr-sync
+        description: Snapshot Overseerr/Jellyseerr request history
+        task:
+          type: model_method
+          modelIdOrName: seerr
+          methodName: sync
+        dependsOn: []
+        weight: 0
+        allowFailure: false
+      - name: tautulli-sync-shows
+        description: Snapshot Tautulli TV watch history (separate from movie history)
+        task:
+          type: model_method
+          modelIdOrName: tautulli
+          methodName: syncShows
+        dependsOn: []
+        weight: 0
+        allowFailure: false
+  - name: score
+    description: Run the curator against fresh data
+    weight: 0
+    dependsOn:
+      - job: sync
+        condition:
+          type: succeeded
+    steps:
+      - name: tv-curator-score
+        description: Score every series for keep/drop with reason breakdown
+        task:
+          type: model_method
+          modelIdOrName: tv-curator
+          methodName: score
+        dependsOn: []
+        weight: 0
+        allowFailure: false
+  - name: clean
+    description: Surface (or apply) drop candidates. Defaults to dry-run.
+    weight: 0
+    dependsOn:
+      - job: score
+        condition:
+          type: succeeded
+    steps:
+      - name: tv-cleaner-apply
+        description: Run the cleaner. Flip `apply: true` after a bake period to actually delete cooled candidates.
+        task:
+          type: model_method
+          modelIdOrName: tv-cleaner
+          methodName: applyDrops
+          inputs:
+            apply: false
+        dependsOn: []
+        weight: 0
+        allowFailure: false

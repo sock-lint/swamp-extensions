@@ -1,0 +1,78 @@
+name: '@lint/dns-rewrite-sync'
+description: |
+  Example DNS reconcile pipeline that wires @lint/dns-policy together with
+  @lint/nginx-proxy-manager and @lint/adguard (and optionally Cloudflare):
+    npm.sync → dns-policy.build → adguard.reconcileRewrites
+                                  (+ cloudflare.reconcile if installed)
+
+  prune=true on the reconcile steps makes dns-policy the canonical source of
+  truth — hand-added rewrites in AdGuard are cleaned up on the next run.
+
+  Step `modelIdOrName` values reference model INSTANCE names, not types. If
+  you named your instances differently (anything other than `npm`,
+  `dns-policy`, `adguard`, `cloudflare`), edit the names below to match, or
+  rename your instances.
+
+  The cloudflare-reconcile step is optional — delete it if you don't run any
+  public-DNS reconciler. The other three steps stand alone.
+version: 1
+tags: {}
+jobs:
+  - name: reconcile
+    description: Sync NPM, build desired list (manual vhosts + NPM-discovered + statics), push to AdGuard
+    weight: 0
+    dependsOn: []
+    steps:
+      - name: npm-sync
+        description: Pull proxy hosts from Nginx Proxy Manager
+        task:
+          type: model_method
+          modelIdOrName: npm
+          methodName: sync
+        dependsOn: []
+        weight: 0
+        allowFailure: false
+      - name: dns-policy-build
+        description: Merge manual vhosts + NPM-discovered vhosts + statics into desired_rewrites
+        task:
+          type: model_method
+          modelIdOrName: dns-policy
+          methodName: build
+          inputs:
+            discoveredVhosts: ${{ data.latest("npm", "inventory").attributes.proxyHosts.filter(h, h.enabled).map(h, h.domainNames[0]).filter(d, d.endsWith(".bos.lol")) }}
+        dependsOn:
+          - step: npm-sync
+            condition:
+              type: succeeded
+        weight: 0
+        allowFailure: false
+      - name: adguard-reconcile
+        description: Apply desired_rewrites to AdGuard (prune=true — dns-policy is canonical)
+        task:
+          type: model_method
+          modelIdOrName: adguard
+          methodName: reconcileRewrites
+          inputs:
+            desired: ${{ data.latest("dns-policy", "desired_rewrites").attributes.entries }}
+            prune: true
+        dependsOn:
+          - step: dns-policy-build
+            condition:
+              type: succeeded
+        weight: 0
+        allowFailure: false
+      - name: cloudflare-reconcile
+        description: (Optional) apply desired_public_records to Cloudflare — delete this step if you don't run a public-DNS reconciler
+        task:
+          type: model_method
+          modelIdOrName: cloudflare
+          methodName: reconcile
+          inputs:
+            desired: ${{ data.latest("dns-policy", "desired_public_records").attributes.hostnames }}
+            prune: true
+        dependsOn:
+          - step: dns-policy-build
+            condition:
+              type: succeeded
+        weight: 0
+        allowFailure: true

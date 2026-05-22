@@ -28,20 +28,28 @@ swamp extension pull @lint/<name>
 | `@lint/tautulli`             | Tautulli watch-history snapshot for movies + shows.                      |
 | `@lint/plex`                 | Plex library inventory — sections, items, last-played.                   |
 | `@lint/pbs`                  | Proxmox Backup Server freshness checker (fresh/stale/missing).           |
+| `@lint/home-assistant`       | Home Assistant REST API — automation CRUD + generic `callService` actuator. |
 | `@lint/discord-notifier`     | Opinionated Discord weekly report bundler for the curator stack.         |
 | `@lint/disk-monitor`         | SSH-based filesystem free-space monitor with thresholds.                 |
 | `@lint/docker-host`          | Agentless docker container discovery across LXCs (via PVE `pct exec`).   |
 | `@lint/image-updates`        | Docker image update tracker — local digest vs registry, per container.   |
 | `@lint/image-updater`        | Auto-applier for image updates — deny list, cooling, per-run cap.        |
 
+### Policy & TLS
+
+| Package             | Description                                                                                                  |
+| ------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `@lint/dns-policy`  | DNS policy compiler — merge manual + NPM-discovered + static rewrites into a deduped desired list. Bundles `dns-rewrite-sync` workflow. |
+| `@lint/cert-health` | TLS-cert expiry tracker — NPM inventory + openssl probe of public hosts. Bundles `cert-health-check` workflow. |
+
 ### Curator suite
 
 | Package                  | Description                                                               |
 | ------------------------ | ------------------------------------------------------------------------- |
-| `@lint/media-curator`    | Movie keep-score engine (Radarr + Seerr + Tautulli + Plex inputs).        |
+| `@lint/media-curator`    | Movie keep-score engine (Radarr + Seerr + Tautulli + Plex inputs). Bundles `weekly-media-refresh` workflow. |
 | `@lint/media-cleaner`    | Movie deletion executor — drives Radarr DELETE with tag + cooling gates.  |
 | `@lint/media-diagnostic` | Cross-instance Radarr diagnostic (duplicates, missing files, oversized).  |
-| `@lint/tv-curator`       | TV series keep-score engine with `endedUnwatched` penalty signal.         |
+| `@lint/tv-curator`       | TV series keep-score engine with `endedUnwatched` penalty signal. Bundles `weekly-tv-refresh` workflow. |
 | `@lint/tv-cleaner`       | Series deletion executor — drives Sonarr DELETE with tag + cooling gates. |
 
 ## Pipeline

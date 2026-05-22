@@ -253,7 +253,7 @@ export const model: {
   methods: Record<string, unknown>;
 } = {
   type: "@lint/tv-curator",
-  version: "2026.05.21.1",
+  version: "2026.05.22.1",
   reports: ["@homelab/tv-curator"],
   globalArguments: GlobalArgsSchema,
   resources: {

@@ -1,0 +1,21 @@
+manifestVersion: 1
+name: "@lint/cert-health"
+version: "2026.05.22.1"
+description: "TLS-certificate expiry tracker — fetch NPM-managed cert inventory and probe public-facing hosts via openssl s_client, classified by days-until-expiry."
+repository: "https://github.com/sock-lint/swamp-extensions"
+paths:
+  base: manifest
+models:
+  - cert-health.ts
+workflows:
+  - cert-health-check/workflow.yaml
+additionalFiles:
+  - README.md
+  - LICENSE.txt
+labels:
+  - tls
+  - certificates
+  - monitoring
+  - npm
+  - homelab
+platforms: []

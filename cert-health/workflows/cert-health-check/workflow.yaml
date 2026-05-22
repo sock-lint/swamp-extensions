@@ -1,0 +1,44 @@
+name: '@lint/cert-health-check'
+description: |
+  TLS cert health audit:
+    cert-health.syncNpm → cert-health.probe (public hostnames from @lint/dns-policy)
+  syncNpm pulls every cert NPM is managing; probe verifies the public end-to-end
+  TLS path (CDN/proxy → NPM → backend) by handshaking against the hostnames
+  the dns-policy publishes externally. Read-only telemetry; no reconciliation.
+
+  Assumes a model instance named `cert-health` (of type @lint/cert-health) and
+  a `dns-policy` instance (of type @lint/dns-policy) exist. If you don't run
+  dns-policy, replace the `hosts:` input on the probe step with a literal
+  list — see README for the snippet.
+version: 1
+tags: {}
+jobs:
+  - name: audit
+    description: Pull NPM cert inventory and probe public-facing hosts
+    weight: 0
+    dependsOn: []
+    steps:
+      - name: sync-npm-certs
+        description: Log into NPM and fetch /api/nginx/certificates
+        task:
+          type: model_method
+          modelIdOrName: cert-health
+          methodName: syncNpm
+        dependsOn: []
+        weight: 0
+        allowFailure: false
+      - name: probe-public-hosts
+        description: TLS-handshake every dns-policy publicVhost; record subject/issuer/notAfter
+        task:
+          type: model_method
+          modelIdOrName: cert-health
+          methodName: probe
+          inputs:
+            hosts: ${{ data.latest("dns-policy", "desired_public_records").attributes.hostnames }}
+            defaultPort: 443
+        dependsOn:
+          - step: sync-npm-certs
+            condition:
+              type: succeeded
+        weight: 0
+        allowFailure: false

@@ -74,6 +74,31 @@ swamp data get drop_candidates --json | jq '.candidates[:10]'
 | `drop_candidates`   | infinite | Subset below `dropThreshold`, sorted by reclaim potential.   |
 | `protected_drops`   | infinite | Would-be drops that the `keep-forever` tag shielded.         |
 
+## Wire it: the `weekly-media-refresh` workflow
+
+This package ships an example weekly pipeline:
+
+```bash
+swamp workflow run weekly-media-refresh
+```
+
+Three jobs in sequence:
+
+1. **sync** — `radarr.sync`, `seerr.sync`, `tautulli.sync` in parallel.
+2. **score** — `media-curator.score` over the fresh data.
+3. **clean** — `media-cleaner.applyDrops` in **dry-run** by default
+   (`apply: false`). Flip to `apply: true` after a bake period reviewing the
+   candidate list, and the cleaner's internal cooling-period gate will only
+   delete candidates that have persisted across multiple weeks.
+
+Expected model **instance names**: `radarr`, `seerr`, `tautulli`,
+`media-curator`, `media-cleaner`. If you run multiple Radarr instances
+(1080p + 4K), edit the workflow after pulling to add a `radarr-4k` step
+alongside `radarr-sync`.
+
+Pair with [`@lint/media-cleaner`](https://github.com/sock-lint/swamp-extensions/tree/main/media-cleaner)
+for the cleaner side.
+
 ## License
 
 MIT — see [LICENSE.txt](./LICENSE.txt).
