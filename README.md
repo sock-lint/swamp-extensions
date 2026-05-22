@@ -24,7 +24,7 @@ swamp extension pull @lint/<name>
 | `@lint/portainer`            | Portainer API — snapshot endpoints, containers, stacks; drive actions.   |
 | `@lint/radarr`               | Radarr v3 inventory + IMDb-mismatch drift detection.                     |
 | `@lint/sonarr`               | Sonarr v3 inventory — series, episodes, root folders, ratings.           |
-| `@lint/seerr`                | Overseerr / Jellyseerr request inventory (provenance source).            |
+| `@lint/seerr`                | Overseerr / Jellyseerr — request inventory plus approve / decline.       |
 | `@lint/tautulli`             | Tautulli watch-history snapshot for movies + shows.                      |
 | `@lint/plex`                 | Plex library inventory — sections, items, last-played.                   |
 | `@lint/pbs`                  | Proxmox Backup Server freshness checker (fresh/stale/missing).           |

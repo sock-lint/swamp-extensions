@@ -1,7 +1,7 @@
 manifestVersion: 1
 name: "@lint/seerr"
-version: "2026.05.21.2"
-description: "Overseerr / Jellyseerr request inventory — paginated requests with status, requester, target id, ready for the media curator."
+version: "2026.05.21.3"
+description: "Overseerr / Jellyseerr wrapper — paginated request inventory ready for the media curator, plus approve / decline mutations against the request API."
 repository: "https://github.com/sock-lint/swamp-extensions"
 paths:
   base: manifest

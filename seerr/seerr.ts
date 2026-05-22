@@ -1,12 +1,16 @@
 /**
- * `@lint/seerr` — Overseerr / Jellyseerr request inventory wrapper.
+ * `@lint/seerr` — Overseerr / Jellyseerr request wrapper.
  *
- * Single method:
+ * Three methods:
  *
- *   - `sync` — page through `/api/v1/request?take=N&skip=N&sort=added` until
+ *   - `sync` — page through `/api/v1/request?take=N&skip=N&filter=all` until
  *     the result set ends, flatten each request into `{requestId, mediaId,
  *     mediaType, status, requestedBy, createdAt, ...}`, emit a `requests`
  *     resource (full list) and `summary` (per-status / per-mediaType counts).
+ *   - `approveRequest` — `POST /api/v1/request/{id}/approve`. Records the
+ *     outcome in `action_result`. Non-throwing on HTTP error.
+ *   - `declineRequest` — `POST /api/v1/request/{id}/decline`. Records the
+ *     outcome in `action_result`. Non-throwing on HTTP error.
  *
  * Auth is the Overseerr/Jellyseerr API key sent via `X-Api-Key`. Both
  * products share the same REST surface, so this model works against either.
@@ -66,6 +70,16 @@ const SummarySchema = z.object({
   fetchedAt: z.iso.datetime(),
 });
 
+const ActionResultSchema = z.object({
+  baseUrl: z.string(),
+  requestId: z.number(),
+  action: z.enum(["approve", "decline"]),
+  httpStatus: z.number(),
+  ok: z.boolean(),
+  body: z.string().describe("Response body (truncated to 400 chars)"),
+  performedAt: z.iso.datetime(),
+});
+
 async function seerrGet(
   baseUrl: string,
   apiKey: string,
@@ -100,6 +114,51 @@ async function seerrGet(
   return JSON.parse(body);
 }
 
+/**
+ * Non-throwing twin of `seerrGet` for POST/DELETE actions. Returns
+ * `{ ok, status, body }` so the caller can record outcomes in a resource
+ * instead of crashing a batch on a single failure (e.g. a 404 for an
+ * already-resolved request).
+ */
+async function seerrCall(
+  baseUrl: string,
+  apiKey: string,
+  method: string,
+  path: string,
+): Promise<{ ok: boolean; status: number; body: string }> {
+  const url = `${baseUrl.replace(/\/$/, "")}${path}`;
+  const args = [
+    "-sS",
+    "-X",
+    method,
+    "-H",
+    `X-Api-Key: ${apiKey}`,
+    "-H",
+    "Accept: application/json",
+    "-w",
+    "\n__HTTP_STATUS__:%{http_code}",
+    url,
+  ];
+  const cmd = new Deno.Command("curl", {
+    args,
+    stdout: "piped",
+    stderr: "piped",
+  });
+  const { code, stdout, stderr } = await cmd.output();
+  if (code !== 0) {
+    return {
+      ok: false,
+      status: 0,
+      body: `curl exit ${code}: ${new TextDecoder().decode(stderr)}`,
+    };
+  }
+  const raw = new TextDecoder().decode(stdout);
+  const m = raw.match(/\n__HTTP_STATUS__:(\d+)$/);
+  const status = m ? parseInt(m[1], 10) : 0;
+  const body = m ? raw.slice(0, m.index) : raw;
+  return { ok: status >= 200 && status < 300, status, body };
+}
+
 /** Swamp model definition for `@lint/seerr`. */
 export const model: {
   type: string;
@@ -110,7 +169,7 @@ export const model: {
   methods: Record<string, unknown>;
 } = {
   type: "@lint/seerr",
-  version: "2026.05.21.2",
+  version: "2026.05.21.3",
   reports: [] as string[],
   globalArguments: GlobalArgsSchema,
   resources: {
@@ -126,6 +185,13 @@ export const model: {
       schema: SummarySchema,
       lifetime: "infinite" as const,
       garbageCollection: 5,
+    },
+    "action_result": {
+      description:
+        "Outcome of the most recent approveRequest / declineRequest call: requestId, action, HTTP status, response body",
+      schema: ActionResultSchema,
+      lifetime: "infinite" as const,
+      garbageCollection: 20,
     },
   },
   methods: {
@@ -196,6 +262,78 @@ export const model: {
         const h1 = await context.writeResource("requests", "requests", inv);
         const h2 = await context.writeResource("summary", "summary", summary);
         return { dataHandles: [h1, h2] };
+      },
+    },
+    approveRequest: {
+      description:
+        "Approve a pending request via POST /api/v1/request/{id}/approve. Non-throwing on HTTP error — outcome lands in action_result.",
+      arguments: z.object({
+        id: z.number().describe(
+          "Seerr request id (the numeric `id` from /api/v1/request, surfaced as `requests.requests[].id`)",
+        ),
+      }),
+      execute: async (args: ExecuteArgs, context: ExecuteContext) => {
+        const { baseUrl, apiKey } = context.globalArgs;
+        const { id } = args as { id: number };
+        const performedAt = new Date().toISOString();
+
+        const result = await seerrCall(
+          baseUrl,
+          apiKey,
+          "POST",
+          `/api/v1/request/${id}/approve`,
+        );
+
+        const handle = await context.writeResource(
+          "action_result",
+          "action_result",
+          {
+            baseUrl,
+            requestId: id,
+            action: "approve",
+            httpStatus: result.status,
+            ok: result.ok,
+            body: result.body.slice(0, 400),
+            performedAt,
+          },
+        );
+        return { dataHandles: [handle] };
+      },
+    },
+    declineRequest: {
+      description:
+        "Decline a pending request via POST /api/v1/request/{id}/decline. Non-throwing on HTTP error — outcome lands in action_result.",
+      arguments: z.object({
+        id: z.number().describe(
+          "Seerr request id (the numeric `id` from /api/v1/request, surfaced as `requests.requests[].id`)",
+        ),
+      }),
+      execute: async (args: ExecuteArgs, context: ExecuteContext) => {
+        const { baseUrl, apiKey } = context.globalArgs;
+        const { id } = args as { id: number };
+        const performedAt = new Date().toISOString();
+
+        const result = await seerrCall(
+          baseUrl,
+          apiKey,
+          "POST",
+          `/api/v1/request/${id}/decline`,
+        );
+
+        const handle = await context.writeResource(
+          "action_result",
+          "action_result",
+          {
+            baseUrl,
+            requestId: id,
+            action: "decline",
+            httpStatus: result.status,
+            ok: result.ok,
+            body: result.body.slice(0, 400),
+            performedAt,
+          },
+        );
+        return { dataHandles: [handle] };
       },
     },
   },
